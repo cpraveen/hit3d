@@ -1,0 +1,74 @@
+# Makefile with logic in it.  For different hosts runs different things
+
+# Define the correct flags and compilers
+
+MPIF90 = blah
+
+ifeq ($(HOSTNAME), yr-fe1.lanl.gov)
+	MPIF90 = mpif90
+
+# 	FCFLAGS = -g -i8 -r8 -c $(MPI_COMPILE_FLAGS) -I$(FFTW_INCLUDE)
+# 	LDFLAGS = -g -i8 -r8 -lfftw3 $(MPI_LD_FLAGS) -L$(FFTW_HOME)/lib
+
+	FCFLAGS = -i8 -r8 -O4 -c $(MPI_COMPILE_FLAGS) -I$(FFTW_INCLUDE)
+	LDFLAGS = -i8 -r8 -O4 -lfftw3 $(MPI_LD_FLAGS) -L$(FFTW_HOME)/lib
+endif
+
+ifeq ($(HOSTNAME), cy-c2.lanl.gov)
+	MPIF90 = mpif90
+	FCFLAGS = -i8 -r8 -O4 -c $(MPI_COMPILE_FLAGS) -I$(FFTW_INCLUDE)
+	LDFLAGS = -i8 -r8 -O4 -lfftw3 $(MPI_LD_FLAGS) -L$(FFTW_HOME)/lib
+endif
+
+
+PROG    = hitflame.x
+
+MODULES = m_openmpi.o\
+	m_io.o\
+	m_parameters.o\
+	m_work.o\
+	m_fields.o\
+	x_fftw.o\
+	m_particles.o\
+	m_stats.o\
+	m_force.o\
+	m_timing.o\
+	m_rand_knuth.o\
+	RANDu.o
+
+OBJ     = main.o\
+	begin_new.o\
+	begin_restart.o\
+	dealias_all.o\
+	get_file_ext.o\
+	init_velocity.o\
+	init_scalars_flame.o\
+	io_write_4.o\
+	my_dt.o\
+	my_exit.o\
+	pressure.o\
+	restart_io.o\
+	rhs_velocity.o\
+	rhs_scalars_flame.o\
+	write_tmp4.o
+
+
+# -------------------------------------------------------
+# link
+
+$(PROG):  $(MODULES) $(OBJ)
+	$(MPIF90) $(LDFLAGS) $(MODULES) $(OBJ) -o $(PROG)
+# -------------------------------------------------------
+# compile
+
+$(OBJ): $(MODULES) 
+
+%.o: %.f
+	$(MPIF90) $(FCFLAGS) -Mextend $<
+
+%.o: %.f90
+	$(MPIF90) $(FCFLAGS) $<
+
+clean:
+	rm *.o *.mod $(PROG)
+
