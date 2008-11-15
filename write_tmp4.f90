@@ -19,7 +19,8 @@ subroutine write_tmp4
      tag = myid
      call MPI_SEND(tmp4,count,MPI_REAL4,master,tag,MPI_COMM_TASK,mpi_err)
   else
-     open(my_out,file=fname,form='binary')
+!!     open(my_out,file=fname,form='binary')
+     open(my_out,file=fname,form='unformatted', access='stream')
      write(my_out) sizes(1:3)
      write(my_out) (((tmp4(i,j,k),i=1,nx),j=1,ny),k=1,nz)
 

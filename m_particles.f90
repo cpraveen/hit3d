@@ -165,7 +165,7 @@ contains
 
     implicit none
 
-    logical :: there, init_start, init_internally
+    logical :: init_start, init_internally
     integer :: i,j,k,npthird,n
     real*8  :: sctmp
 
@@ -496,7 +496,9 @@ contains
 
 
     write(out,*) 'Particles normalized:',nptot
-    write(out,'(i5,3f20.10)') ((ipart(j),(xyzp(i,j),i=1,3)),j=1,nptot)
+    do j = 1,nptot
+       write(out,'(i5,3f20.10)') ipart(j),(xyzp(i,j),i=1,3)
+    end do
 
 !-------------------------------------------------------------------------
 !  removing particles that do not correspond to this slab
@@ -521,7 +523,10 @@ contains
     end do
 
     write(out,*) 'Particles left in:',np
-    write(out,'(i5,3f20.10)') ((ipart(j),(xyzp(i,j),i=1,3)),j=1,np)
+    write(out,*) 'Particles normalized:',nptot
+    do j = 1,nptot
+       write(out,'(i5,3f20.10)') ipart(j),(xyzp(i,j),i=1,3)
+    end do
 
     ! Recalculating the particles' coordinates in grid cells
     do j = 1,np
@@ -530,7 +535,10 @@ contains
        xyzp(3,j) = xyzp(3,j) / (2.0d0 * PI / dble(nx)) + 1.0d0 - dble(myid*nz)
     end do
     write(out,*) 'Particles left in, rescaled:',np
-    write(out,'(i5,3f20.10)') ((ipart(j),(xyzp(i,j),i=1,3)),j=1,np)
+    write(out,*) 'Particles normalized:',nptot
+    do j = 1,nptot
+       write(out,'(i5,3f20.10)') ipart(j),(xyzp(i,j),i=1,3)
+    end do
 
 
     ! initializing uvwp with -999.00
@@ -611,7 +619,8 @@ contains
     ! ------------------------------------------------------------------------------
 
     if (myid.eq.0) then
-       open(89,file='pt.'//file_ext,form='binary')
+!!       open(89,file='pt.'//file_ext,form='binary')
+       open(89,file='pt.'//file_ext,form='unformatted',access='stream')
        write(89) nptot
        do ntmp = 1,nptot
           write(89) ipart(ntmp),&
@@ -655,7 +664,7 @@ contains
 
 !  Checking that the number of particles in the binary file is correct  
     if (myid.eq.0) then
-       open(81,file=fname,form='binary')
+       open(81,file=fname,form='unformatted',access='stream')
        read(81) nptot
     end if
     call MPI_BCAST(nptot,1,MPI_INTEGER,0,MPI_COMM_TASK,mpi_err)
