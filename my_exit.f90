@@ -41,6 +41,12 @@ subroutine my_exit(reason)
      write(out,*) '          RUN-TIME TERMINATION'
      write(out,*) '---------------------------------------------'
 
+  case(3)
+
+     write(out,*) '---------------------------------------------'
+     write(out,*) '          USER TERMINATION'
+     write(out,*) '---------------------------------------------'
+
   case default 
 
      write(out,*) '---------------------------------------------'
