@@ -229,6 +229,10 @@ program x_code
         count = 1
         call MPI_BCAST(cpu_min_total,count,MPI_INTEGER4,0,MPI_COMM_WORLD,mpi_err)
         if (cpu_min_total+30 .gt. job_runlimit) call my_exit(2)
+
+        ! user termination.  If the file "stop" is in the directory, stop
+	inquire(file='stop',exist=there)
+	if (there) call my_exit(3)
      end if
 
 
