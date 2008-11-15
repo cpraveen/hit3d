@@ -29,6 +29,9 @@ contains
     use m_parameters
     implicit none
 
+    write(out,*) "Inside m_work_init ",task
+    call flush(out)
+
     ! allocating work arrays
     if (task.eq.'hydro')  then
        call m_work_allocate(max(6,5+n_scalars))
@@ -40,11 +43,11 @@ contains
        select case (particles_tracking_scheme)
        case (0)
           allocate(wrk(1:nx+2,1:ny,1:3,0:0),stat=ierr)
-          write(out,*) "Allocated wrk(1:nx+2,1:ny,1:3,0:0)"
+          write(out,*) "Allocated wrk(1:nx+2,1:ny,1:3,0:0)", ierr
           wrk = zip
        case (1)
           allocate(wrk(1:nx+2,1:ny,1:3,1:3),stat=ierr)
-          write(out,*) "Allocated wrk(1:nx+2,1:ny,1:3,1:3)"
+          write(out,*) "Allocated wrk(1:nx+2,1:ny,1:3,1:3)", ierr
           wrk = zip
        case default
           stop 'wrong particles_tracking_scheme'
@@ -58,6 +61,8 @@ contains
        print *,'task = ',task
     end if
 
+    write(out,*) "Finished m_work_init"
+    call flush(out)
 
     return
   end subroutine m_work_init
@@ -103,7 +108,7 @@ contains
 
     tmp4 = 0.0
     wrk = 0.0d0
-    rhs_old = 0.d0
+    if (allocated(rhs_old)) rhs_old = 0.d0
 
 
     return

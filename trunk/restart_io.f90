@@ -26,7 +26,8 @@ subroutine restart_read
 
   ! root process reads parameters from the file
   if (myid_world.eq.0) then
-     open(91,file=fname,form='binary')
+!!     open(91,file=fname,form='binary')
+     open(91,file=fname,form='unformatted',access='stream')
      read(91) nx1, ny1, nz1, nums1, MST1, TIME, ST
   end if
 
@@ -259,11 +260,12 @@ subroutine restart_write
 
   else
      ! if it's the root, then write the restart file
-     open(91,file=fname,form='binary')
+!!     open(91,file=fname,form='binary')
+     open(91,file=fname,form='unformatted', access='stream')
 
      ! first write the parameters
      ST = zip
-     write(91) int4(nx),int4(ny),int4(nz*numprocs),int4(nums_out),int4(MST),TIME,ST
+     write(91) int(nx,4),int(ny,4),int(nz*numprocs,4),int(nums_out,4),int(MST,4),TIME,ST
 
      ! then write the variables, one by one
      do n = 1,3+nums_out
@@ -452,7 +454,8 @@ subroutine restart_read_parallel
   ! ----------------------------------------------------------------------
 
   if (myid.eq.0) then
-     open(91,file=fname,form='binary')
+!!     open(91,file=fname,form='binary')
+     open(91,file=fname,form='unformatted',access='stream')
      read(91) nx1, ny1, nz1, nums1, MST1, TIME, ST
      close(91)
   end if

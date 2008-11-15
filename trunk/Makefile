@@ -7,9 +7,6 @@ MPIF90 = blah
 ifeq ($(HOSTNAME), yr-fe1.lanl.gov)
 	MPIF90 = mpif90
 
-# 	FCFLAGS = -g -i8 -r8 -c $(MPI_COMPILE_FLAGS) -I$(FFTW_INCLUDE)
-# 	LDFLAGS = -g -i8 -r8 -lfftw3 $(MPI_LD_FLAGS) -L$(FFTW_HOME)/lib
-
 	FCFLAGS = -i8 -r8 -O4 -c $(MPI_COMPILE_FLAGS) -I$(FFTW_INCLUDE)
 	LDFLAGS = -i8 -r8 -O4 -lfftw3 $(MPI_LD_FLAGS) -L$(FFTW_HOME)/lib
 endif
@@ -26,16 +23,26 @@ ifeq ($(HOSTNAME), glacial.stanford.edu)
         MPIF90 = mpif90
         FCFLAGS = -i8 -r8 -c $(MPI_COMPILE_FLAGS) -I$(FFTW_HOME)/include
         LDFLAGS = -i8 -r8 $(MPI_LD_FLAGS) -L$(FFTW_HOME)/lib -lfftw3 -lm
+        FCFLAGS_F77 = -extended-source
+
 endif
 
-
+ifeq ($(HOSTNAME), sparrow.stanford.edu)
+        MPIF90 = mpif90
+#        FFTW_HOME = /opt/local/var/macports/software/fftw-3/3.1.3_0/opt/local
+#        FFTW_LIB = $(FFTW_HOME)/lib
+#        FFTW_INCLUDE = $(FFTW_HOME)/include
+        FCFLAGS = -fdefault-real-8 -fdefault-integer-8 -finit-integer=0 -finit-real=zero -c 
+        FCFLAGS_F77 = -ffixed-form -ffixed-line-length-none
+        FCFLAGS_F90 = -ffree-form -ffree-line-length-none
+        LDFLAGS = -fdefault-real-8 -fdefault-integer-8 -finit-integer=0 -finit-real=zero -lmpi -lmpi -lfftw3 -lm
+endif
 
 
 
 PROG    = hit3d.x
 
-MODULES = m_openmpi.o\
-	m_io.o\
+MODULES = m_openmpi.o m_io.o\
 	m_parameters.o\
 	m_work.o\
 	m_fields.o\
@@ -76,7 +83,7 @@ $(PROG):  $(MODULES) $(OBJ)
 $(OBJ): $(MODULES) 
 
 %.o: %.f
-	$(MPIF90) $(FCFLAGS) -Mextend -extend-source $<
+	$(MPIF90) $(FCFLAGS) $(FCFLAGS_F77)  $<
 
 %.o: %.f90
 	$(MPIF90) $(FCFLAGS) $<
