@@ -2,7 +2,7 @@
 !  Module that contains filtering rocedure for the part of the code that
 !  addvects lagrangian particles
 !
-!  Time-stamp: <2008-11-06 11:19:23 (chumakov)>
+!  Time-stamp: <2008-11-18 13:21:17 (chumakov)>
 !======================================================================
 module m_filter_xfftw
 
@@ -41,9 +41,6 @@ contains
     real*8 :: a,b,c,d
 
 !----------------------------------------------------------------------
-
-    write(out,*) 'Filtering wrk #',n
-    call flush(out)
 
 !!$    call xFFT3d(1,n)
 
@@ -87,9 +84,6 @@ contains
     real*8 :: a,b,c,d
 
 !----------------------------------------------------------------------
-
-    write(out,*) 'Filtering fields #',n
-    call flush(out)
 
 !!$    call xFFT3d(1,n)
 

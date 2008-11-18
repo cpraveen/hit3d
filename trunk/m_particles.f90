@@ -49,6 +49,8 @@ module m_particles
   ! the particles
   integer*4  :: np_send_u, np_send_d, np_get_u, np_get_d
 
+  ! the last iteration at which the particles were written out
+  integer :: particles_last_dump = -1
 
 !================================================================================
 !================================================================================
@@ -562,6 +564,13 @@ contains
     integer*4 :: np_rec
     integer   :: np_cur, ntmp
 
+    ! if the last iteration at which the particles were written out is the
+    ! current iteration, then skip the writing
+    if (particles_last_dump .eq. itime) return
+
+    ! otherwise proceed and redefine the particles_last_dump
+    particles_last_dump = itime
+
     write(out,*) 'writing the BINARY particle restart file'
     call flush(out)
 
@@ -759,8 +768,6 @@ contains
     ! 2) transform them back to real space
 
     locally_averaged_velocity: if (particles_filter_size .gt. 0.d0) then
-       write(out,*) 'particles_filter_size = ',particles_filter_size,', transforming!'
-       call flush(out)
        ! filter each field and transform to real space
        do n = 1,3
           call filter_xfftw_fields(n)
