@@ -197,6 +197,7 @@ program x_code
 
         if (int_particles) then
            call particles_move
+           if (mod(itime,iwrite4).eq.0) call particles_restart_write_binary
         end if
 
         if (mod(itime,iprint1).eq.0 .or. mod(itime,iwrite4).eq.0) then
