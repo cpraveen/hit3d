@@ -203,7 +203,7 @@ CONTAINS
        do iz = 1, nz
           call DFFTW_PLAN_DFT_R2C_2D(plan_r2c(iz, n), nx, ny, &
                xy_sheet, wrk(1, 1, iz, n), &
-               FFTW_FORWARD, FFTW_ESTIMATE)
+               FFTW_ESTIMATE)
        end do
     end do
 
@@ -212,7 +212,7 @@ CONTAINS
        do iz = 1, nz
           call DFFTW_PLAN_DFT_R2C_2D(plan_r2c_f(iz, n), nx, ny, &
                xy_sheet, fields(1, 1, iz, n), &
-               FFTW_FORWARD, FFTW_ESTIMATE)
+               FFTW_ESTIMATE)
        end do
     end do
 
@@ -235,7 +235,7 @@ CONTAINS
        do iz = 1, nz
           call DFFTW_PLAN_DFT_C2R_2D(plan_c2r(iz, n), nx, ny, &
                wrk(1, 1, iz, n), xy_sheet, &
-               FFTW_BACKWARD, FFTW_ESTIMATE)
+               FFTW_ESTIMATE)
        end do
     end do
 
@@ -244,7 +244,7 @@ CONTAINS
        do iz = 1, nz
           call DFFTW_PLAN_DFT_C2R_2D(plan_c2r_f(iz, n), nx, ny, &
                fields(1, 1, iz, n), xy_sheet, &
-               FFTW_BACKWARD, FFTW_ESTIMATE)
+               FFTW_ESTIMATE)
        end do
     end do
 

@@ -19,19 +19,16 @@ endif
 
 
 ifeq ($(HOSTNAME), glacial.stanford.edu)
-        FFTW_HOME = /opt/fftw-3.1.2/intel
+        FFTW_HOME = /home/chumakov/packages/fftw-3.2/pgi
         MPIF90 = mpif90
         FCFLAGS = -i8 -r8 -c $(MPI_COMPILE_FLAGS) -I$(FFTW_HOME)/include
         LDFLAGS = -i8 -r8 $(MPI_LD_FLAGS) -L$(FFTW_HOME)/lib -lfftw3 -lm
-        FCFLAGS_F77 = -extended-source
+        FCFLAGS_F77 = -Mextend
 
 endif
 
 ifeq ($(HOSTNAME), sparrow.stanford.edu)
         MPIF90 = mpif90
-#        FFTW_HOME = /opt/local/var/macports/software/fftw-3/3.1.3_0/opt/local
-#        FFTW_LIB = $(FFTW_HOME)/lib
-#        FFTW_INCLUDE = $(FFTW_HOME)/include
         FCFLAGS = -fdefault-real-8 -fdefault-integer-8 -finit-integer=0 -finit-real=zero -c 
         FCFLAGS_F77 = -ffixed-form -ffixed-line-length-none
         FCFLAGS_F90 = -ffree-form -ffree-line-length-none
