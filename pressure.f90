@@ -85,7 +85,7 @@ subroutine divergence
 
   if (myid.eq.0) then
     write(out,*) 'divergence:',dmin,dmax
-    print *, 'divergence:',dmin,dmax
+!!$    print *, 'divergence:',dmin,dmax
     call flush(out)
   end if
 
