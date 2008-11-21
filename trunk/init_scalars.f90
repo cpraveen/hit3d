@@ -1,5 +1,33 @@
 subroutine init_scalars
 
+  use m_parameters
+  use m_io
+
+  implicit none
+
+  integer :: n_scalar
+
+  write(out,*) 'Generating scalars'
+  call flush(out)
+
+
+  do n_scalar = 1,n_scalars
+
+        call init_scalar_spectrum(n_scalar)
+
+  end do
+
+  write(out,*) "Generated the scalars."
+  call flush(out)
+
+  return
+
+end subroutine init_scalars
+
+!================================================================================
+subroutine init_scalar_spectrum(n_scalar)
+!================================================================================
+
   use m_openmpi
   use m_parameters
   use m_io
@@ -24,18 +52,16 @@ subroutine init_scalars
 
 
 !================================================================================
-  allocate( e_spec(kmax), e_spec1(kmax), hits(kmax), hits1(kmax), rr(nx+2), stat=ierr)
-
-  write(out,*) 'Generating random scalars'
-  call flush(out)
-
-  ! Initializing the random sequence with the seed RN2
-  fac = random(-RN2)
-
-  main_cycye: do n_scalar = 1,n_scalars
 
      write(out,*) " Generating scalar # ",n_scalar
      call flush(out)
+
+     ! Initializing the random sequence with the seed RN2
+     fac = random(-RN2)
+
+     ! allocate work arrays
+     allocate( e_spec(kmax), e_spec1(kmax), hits(kmax), hits1(kmax), &
+          rr(nx+2), stat=ierr)
 
 
      ! bringing the processors to their own places in the random sequence
@@ -207,17 +233,11 @@ subroutine init_scalars
 
      end if
 
+     ! deallocate work arrays
+     deallocate(e_spec, e_spec1, rr, hits, hits1, stat=ierr)
 
-
-  end do main_cycye
-
-
-
-  ! deallocate work arrays
-  deallocate(e_spec, e_spec1, rr, hits, hits1, stat=ierr)
-
-  write(out,*) "Generated the scalars."
-  call flush(out)
 
   return
-end subroutine init_scalars
+end subroutine init_scalar_spectrum
+
+
