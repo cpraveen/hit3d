@@ -167,7 +167,7 @@ contains
 
     implicit none
 
-    logical :: init_start, init_internally
+    logical :: init_start = .false., init_internally = .false.
     integer :: i,j,k,npthird,n
     real*8  :: sctmp
 
@@ -332,7 +332,7 @@ contains
     if (particles_filter_size > 0.d0) call filter_xfftw_init
 
     return
-9000 write(out,*) 'ERROR in reading particle file (particles_init).'
+9000 write(out,*) '*** PARTICLES_INIT: ERROR in reading file <run_title>.pt !!!'
     stop
   end subroutine particles_init
 
