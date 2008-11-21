@@ -2,7 +2,7 @@
 !  Module that contains filtering rocedure for the part of the code that
 !  addvects lagrangian particles
 !
-!  Time-stamp: <2008-11-18 13:21:17 (chumakov)>
+!  Time-stamp: <2008-11-20 17:18:04 (chumakov)>
 !======================================================================
 module m_filter_xfftw
 
@@ -143,45 +143,15 @@ contains
     end if
 
     write(out,*)'initializing the filter'
-
-    ! looking for the available wrk array.  Later the filter will be
-    ! created in this array and copied to filter_g array
-!
-    ! The logic is as follows.  At the end we need an array with the 
-    ! Fourier transform of the filter function G; that array is filter_g.
-    ! But our FFT routines work only on the "wrk" array, so to create 
-    ! a full filter_g we need at least one full segment of the wrk array.
-    ! By that we mean something like wrk(1:nx+2,1:ny,1:nz,n) for some n.
-    ! The problem is that wrk array can be allocated with different size.
-    ! So we get the dimensions of the currently allocated wrk, save in in the
-    ! array ii(:), deallocate wrk, allocate it with the size that we need
-    ! to define filter_g, use it to define filter_g, deallocate it and 
-    ! allocate it again with the old sizes.
-
-    ! note that since FFTW routines are tied to the size of wrk array,
-    ! we need to deallocate/allocate the FFTW arrays and initialize them
-    ! as well when we change the strufture of the wrk array
-
-    ! getting the dimensions of currently allocated wrk array
-    do i = 1,4
-       ii(2*i-1) = LBOUND(wrk,i)
-       ii(2*i  ) = UBOUND(wrk,i)
-    end do
-    write(out,"('Dimensions of wrk:',8i5)") ii(1:8)
     call flush(out)
-    deallocate(wrk)
-    allocate(wrk(1:nx+2,1:ny,1:nz,0:0),stat=ierr)
-    if (ierr.ne.0) stop '*** m_filter_init: cannot allocate necessary wrk'
-    wrk = zip
 
-    ! re-initializing the FFTW arrays
-    call x_fftw_allocate(-1)
-    call x_fftw_allocate(1)
-    call x_fftw_init
+    ! the main idea is as follows:
+    ! 1) create the filter kernel in one of the fields array
+    ! 2) transform it into the Fourier space
+    ! 3) put it into the array filter_g 
 
-    ! number of the slice in the wrk array that will be used
-    m = LBOUND(wrk,4)
-
+    ! number of the slice in the fields array that will be used
+    m = LBOUND(fields,4)
 
 
 !---------------------------------------------------------------
@@ -194,14 +164,12 @@ contains
 !-------------------------------------------------------------------
     case (1)
        write(out,*) '-- tophat filter, delta =',delta
-!       if(myid.eq.0) print*,'-- tophat filter, delta =',delta
-
 
        write(out,*) "Tophat filter is not working at the moment."
        write(out,*) "We're sorry for the inconvenience, stopping."
        call my_exit(-1)
 
-       wrk(:,:,:,m) = zip
+       fields(:,:,:,m) = zip
 
        idelta = delta / dx / 2
        ! normalization constant
@@ -213,9 +181,9 @@ contains
              dj = min(j-1,ny-j+1)
              do i = 1,nx
                 di = min(i-1,nx-i+1)
-                wrk(i,j,k,m) = zip
+                fields(i,j,k,m) = zip
                 if (di.le.idelta .and. dj.le.idelta .and. dk.le.idelta) then
-                   wrk(i,j,k,m) = const2
+                   fields(i,j,k,m) = const2
                 end if
              end do
           end do
@@ -227,11 +195,11 @@ contains
        write(out,*) '-- Gaussian filter, delta =',delta
        call flush(out)
 
-       wrk(:,:,:,m) = zip
+       fields(:,:,:,m) = zip
 
-!       if(myid.eq.0) print*,'-- Gaussian filter, delta =',delta
        const1 = 6.0d0 / delta**2
        const2 = sqrt(const1/PI)**3 *dx**3
+
        do k = 1,nz
           dk = min(myid*nz+k-1,nz*numprocs-(myid*nz+k)+1)
           rz = dx * real(dk,8)
@@ -242,16 +210,11 @@ contains
                 di = min(i-1,nx-i+1)
                 rx = dx * real(di,8)
                 rx = rx*rx+ry*ry+rz*rz
-                wrk(i,j,k,m) = const2*exp(-const1*rx)
-
-!                if (k==4) write(out,"(6i3,4e15.5)") i,j,k, di, dj, dk, rx, ry, rz, wrk(i,j,k,m)
-
+                fields(i,j,k,m) = const2*exp(-const1*rx)
+                if (fields(i,j,k,m) < 1.e-20) fields(i,j,k,m) = zip
              end do
           end do
        end do
-
-       write(out,"(e15.6)") wrk(:,1,4,m)
-       write(out,*) "------------------------"
 
 !-------------------------------------------------------------------
 !  linear filter
@@ -272,8 +235,8 @@ contains
                 rx = dx * real(di,8)
 
                 rx = rx*rx+ry*ry+rz*rz
-                wrk(i,j,k,m) = zip
-                if (rx.le.const2) wrk(i,j,k,m) = &
+                fields(i,j,k,m) = zip
+                if (rx.le.const2) fields(i,j,k,m) = &
                      const1*(1.0d0-2.0d0*sqrt(rx)/delta)
              end do
           end do
@@ -284,67 +247,25 @@ contains
        stop
     end select case_filter_type
 
-    write(out,"(e15.6)") wrk(:,1,4,m)
-    write(out,*) "------------------------"
-    write(out,*) "------------------------"
-
-
-    const1 = sum(wrk(1:nx,1:ny,1:nz,m))
+    ! outputting the sum of all elements of G.
+    ! It should equal 1.0.
+    const1 = sum(fields(1:nx,1:ny,1:nz,m))
     call MPI_REDUCE(const1,const2,1,MPI_REAL8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
     if(myid.eq.0) write(out,*) '-- NORM OF G: ',const2
 
-    write(out,"(e15.6)") wrk(:,1,4,m)
-    write(out,*) "------------------------"
-    write(out,*) "------------------------"
+    ! compute FFT of g
+    call xFFT3d_fields(1,m)
 
-    do k = 1,nz
-       do j = 1,ny
-          do i = 1,nx
-             tmp4(i,j,k) = wrk(i,j,k,m)
-          end do
-       end do
-    end do
-!!$    tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,m)
-!!$    fname = 'blah'
-!!$    call write_tmp4
-
-
-
-!! outputting the filter
-    write(out,"(e15.6)") wrk(:,1,4,m)
-
-
-!---------------------------------------------------------------
-!  compute FFT of g
-
-    call xFFT3d(1,m)
-!  print *,myid,' FILTER_FFT_INIT: FFT-1 done'
-
-!  putting the FFT of the filter into filter_g.
+    ! putting the FFT of the filter into filter_g.
     ! allocating the filter array
     if (.not.allocated(filter_g)) then
-       allocate(filter_g(nx+2,ny,nz))
+       allocate(filter_g(nx+2,ny,nz), stat=ierr)
+       if (ierr /= 0) stop 'cannot allocate filter_g'
        filter_g = zip
        write(out,*) 'allocated filter_g'
        call flush(out)
     end if
-    filter_g(:,:,:) = wrk(:,:,:,m)
-
-
-    ! now we need to restore the size of the wrk array to what it was
-    ! before the start of the subroutine
-    deallocate(wrk)
-    allocate(wrk(ii(1):ii(2),ii(3):ii(4),ii(5):ii(6),ii(7):ii(8)),stat=ierr)
-    write(out,"('Re-allocated wrk(',i1,':',i4,',',i1,':',i4,',',i1,':',i4,',',i1,':',i4,')')") &
-         ii(1:8)
-    call flush(out)
-    wrk = zip
-
-    ! re-initializing the FFTW arrays
-    call x_fftw_allocate(-1)
-    call x_fftw_allocate(1)
-    call x_fftw_init
-
+    filter_g(:,:,:) = fields(:,:,:,m)
 
 !!$!  no need to normalize filter_g because our implementation of FFT
 !!$!  normalizes the result anyways
@@ -356,6 +277,7 @@ contains
 !!$          end do
 !!$       end do
 !!$    end do
+
 
     return
   end subroutine filter_xfftw_init
