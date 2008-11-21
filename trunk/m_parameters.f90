@@ -3,6 +3,7 @@
 !                such as array dimensions, reynolds numbers, switches/flags etc.
 !
 ! Time-stamp: <2008-11-04 17:21:04 (chumakov)>
+! Time-stamp: <2008-11-20 17:27:59 MST (vladimirova)>
 !================================================================================
 
 module m_parameters
@@ -71,7 +72,7 @@ module m_parameters
   integer :: iles
 
   integer, allocatable :: scalar_type(:)
-  real*8, allocatable  :: pe(:), sc(:), ir_exp_sc(:), peak_wavenum_sc(:)
+  real*8, allocatable  :: pe(:), sc(:), ir_exp_sc(:), peak_wavenum_sc(:), reac_sc(:)
 
 
   ! constants
@@ -386,12 +387,15 @@ contains
 
        ! reading parameters of each scalar
        allocate(scalar_type(n_scalars), pe(n_scalars), sc(n_scalars), &
-            ir_exp_sc(n_scalars), peak_wavenum_sc(n_scalars), stat=ierr)
+            ir_exp_sc(n_scalars), peak_wavenum_sc(n_scalars), &
+            reac_sc(n_scalars), stat=ierr)
        if (ierr.ne.0) passed = 0
 
        do n = 1,n_scalars
-          read(in,*,ERR=9000,END=9000) scalar_type(n), sc(n), ir_exp_sc(n), peak_wavenum_sc(n)
-          write(out,'(9x,i4,3f8.3)') scalar_type(n), sc(n), ir_exp_sc(n), peak_wavenum_sc(n)
+          read(in,*,ERR=9000,END=9000) scalar_type(n), sc(n), ir_exp_sc(n), &
+               peak_wavenum_sc(n), reac_sc(n)
+          write(out,'(9x,i4,3f8.3)') scalar_type(n), sc(n), ir_exp_sc(n), &
+               peak_wavenum_sc(n), reac_sc(n)
 
           PE(n) = nu/SC(n)       ! INVERSE Peclet number
 
