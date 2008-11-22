@@ -13,7 +13,15 @@ subroutine init_scalars
 
   do n_scalar = 1,n_scalars
 
+     if (scalar_type(n_scalar).lt.2000) then
+
         call init_scalar_spectrum(n_scalar)
+
+     else
+
+        call init_scalar_space(n_scalar)
+
+     end if
 
   end do
 
@@ -240,4 +248,49 @@ subroutine init_scalar_spectrum(n_scalar)
   return
 end subroutine init_scalar_spectrum
 
+!================================================================================
+subroutine init_scalar_space(n_scalar)
+!================================================================================
 
+  use m_openmpi
+  use m_io
+  use m_parameters
+  use m_fields
+  use m_work
+  use x_fftw
+
+  implicit none
+
+  integer :: k, n_scalar
+  real*8  :: zloc, s, h
+
+  write(out,*) " Generating scalar # ", n_scalar
+  call flush(out)
+
+  if (scalar_type(n_scalar).eq.2001) then
+
+     ! how much to smear out the interface
+     h = 4*dz  
+
+     ! creating array of scalar
+     do k = 1,nz
+        zloc = dble(myid*nz + k-1) * dz
+        s = tanh((zloc-PI*0.5)/h) - tanh((zloc-PI*1.5)/h) - 1
+        wrk(:,:,k,0) = dcmplx(s, 0.d0)
+     end do
+
+     ! FFT of the scalar
+     call xFFT3d(1,0)
+
+     ! putting it into the scalar array
+     fields(:,:,:, 3+n_scalar) = wrk(:,:,:,0)
+
+  else
+     write(out,*) "INIT_SCALARS: UNEXPECTED SCALAR TYPE: ", scalar_type(n_scalar)
+     call flush(out)
+     stop
+  end if
+
+  return
+
+end subroutine init_scalar_space
