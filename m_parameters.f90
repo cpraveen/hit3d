@@ -130,6 +130,7 @@ contains
        call getarg(0,tmp_str)
        write(out,*) 'Format: ',trim(tmp_str),' <run name>'
        write(*,*)      'Format: ',trim(tmp_str),' <run name>'
+       call flush(out)
        call MPI_FINALIZE(ierr)
        stop
     end if
@@ -142,6 +143,7 @@ contains
        stop
     end if
     write(out,*) 'Run name: "',run_name,'"'
+    call flush(out)
 
   end subroutine get_run_name
 
@@ -161,6 +163,7 @@ contains
     inquire(file=run_name//'.in', exist=there)
     if(.not.there) then
        write(out,*) '*** cannot find the input file'
+       call flush(out)
        call MPI_FINALIZE(ierr)
        stop
     end if
@@ -186,11 +189,13 @@ contains
     if (nz*numprocs.ne.nz_all) then
        write(out,*) '*** wrong nz_all:', nz_all, &
             '*** should be divisible by numprocs:',numprocs
+       call flush(out)
        passed = 0
     end if
     write(out,'(70(''=''))') 
     write(out,"('NX,NY,NZ_ALL', 3i4)") nx,ny,nz_all
     write(out,"('NX,NY,NZ    ', 3i4)") nx,ny,nz
+    call flush(out)
 
     dx = 2.0d0 * PI / dble(nx)
     dy = 2.0d0 * PI / dble(ny)
@@ -215,6 +220,7 @@ contains
     write(out,*) 'IWRITE4=  ',IWRITE4
     read(in,*)
     write(out,"(70('-'))")
+    call flush(out)
 
     ! ------------------------------------------------------------
 
@@ -228,6 +234,7 @@ contains
     write(out,*) 'TSCALAR  =',TSCALAR
     read(in,*)
     write(out,"(70('-'))")
+    call flush(out)
 
 !      if(TSCALAR.le.TRESCALE) then
 !        TSCALAR = TRESCALE
@@ -240,6 +247,7 @@ contains
     write(out,*) 'flow_type    ', flow_type
     read(in,*)
     write(out,"(70('-'))")
+    call flush(out)
 
     ! ------------------------------------------------------------
 
@@ -260,6 +268,7 @@ contains
     udt = 1.0d0/DT
     read(in,*)
     write(out,"(70('-'))")
+    call flush(out)
 
     ! ------------------------------------------------------------
 
@@ -273,6 +282,7 @@ contains
     write(out,*) 'peak_wavenum =   ',peak_wavenum
     read(in,*)
     write(out,"(70('-'))")
+    call flush(out)
 
     ! ------------------------------------------------------------
 
@@ -287,6 +297,7 @@ contains
 
     read(in,*)
     write(out,"(70('-'))")
+    call flush(out)
 
 !!$    c------------------------------------------------------------
 !!$
@@ -303,6 +314,7 @@ contains
     write(out,*) 'dealias = ',dealias
     read(in,*)
     write(out,"(70('-'))")
+    call flush(out)
 
     ! -------------------------------------------------------------
 
@@ -319,6 +331,7 @@ contains
     write(out,*) 'RN3      =',RN3
     read(in,*)
     write(out,"(70('-'))")
+    call flush(out)
 
     ! -------------------------------------------------------------
 
@@ -340,6 +353,7 @@ contains
        write(out,*) 'reset to zero'
        particles_tracking_scheme = 0
     end select
+    call flush(out)
 
 
 ! DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
@@ -370,6 +384,7 @@ contains
     write(out,*) 'iles     =',iles
     read(in,*)      
     write(out,"(70('-'))")
+    call flush(out)
 
     ! -------------------------------------------------------------
 
@@ -377,6 +392,7 @@ contains
     write(out,*) '# of scalars:', n_scalars
     read(in,*)
     write(out,"(70('-'))")
+    call flush(out)
 
     ! ------------------------------------------------------------
 
@@ -384,6 +400,7 @@ contains
     if (n_scalars>0) then
        read(in,'(A)',ERR=9000,END=9000) str_tmp
        write(out,*) str_tmp
+       call flush(out)
 
        ! reading parameters of each scalar
        allocate(scalar_type(n_scalars), pe(n_scalars), sc(n_scalars), &
@@ -394,8 +411,9 @@ contains
        do n = 1,n_scalars
           read(in,*,ERR=9000,END=9000) scalar_type(n), sc(n), ir_exp_sc(n), &
                peak_wavenum_sc(n), reac_sc(n)
-          write(out,'(9x,i4,3f8.3)') scalar_type(n), sc(n), ir_exp_sc(n), &
+          write(out,'(9x,i4,1x,4(f8.3,1x))') scalar_type(n), sc(n), ir_exp_sc(n), &
                peak_wavenum_sc(n), reac_sc(n)
+               call flush(out)
 
           PE(n) = nu/SC(n)       ! INVERSE Peclet number
 
@@ -424,12 +442,14 @@ contains
 
     if (passed.lt.one) then
        write(out,*) "not passed the check, stopping"
+       call flush(out)
        stop
     end if
 
     return
 9000 continue
     write(out,*)'An error was encountered while reading input file'
+    call flush(out)
     stop
   end subroutine read_input_file
 
