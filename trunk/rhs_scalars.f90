@@ -72,11 +72,78 @@ subroutine rhs_scalars
         end do
      end do
 
+     if (scalar_type(n).eq.2001) then
+        call add_reaction(n)
+     end if
+
   end do
 
   return
 end subroutine rhs_scalars
 
+!================================================================================
+!================================================================================
+subroutine add_reaction(n)
+
+  use m_openmpi
+  use m_io
+  use m_parameters
+  use m_fields
+  use m_work
+  use x_fftw
+
+  implicit none
+
+  integer :: i,j,k,n
+  real*8  :: r, s, smean, rrate,  wnum2
+
+  ! raction rate 
+  rrate = reac_sc(n)/16.
+
+  ! self-adjusting threshold
+  !smean = dble(fields(1,1,1,3+n))
+  !call MPI_Bcast(smean, 1, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
+
+  do k = 1,nz
+     do j = 1,ny
+        do i = 1,nx
+
+           ! local scalar
+           s = dble(wrk(i,j,k,0))
+ 
+           ! bistable reaction        
+           !r = - rrate * (1.d0-s*s) * (s-smean)
+
+           ! KPP
+           r = rrate*(1-s*s)
+
+           ! reaction rate stored
+           wrk(i,j,k,n_scalars+5) = dcmplx(r,0.0d0)
+
+        end do
+     end do
+  end do
+
+  ! FFT the reaction into the Fourier space
+  call xFFT3d(1,n_scalars+5)
+
+  ! Adding reaction to the RHS in wrk(:,:,:,3+n)
+
+  wrk(:,:,:,3+n) = wrk(:,:,:,3+n) + wrk(:,:,:,n_scalars+5)
+
+  ! Zero out high frequencies in the RHS
+  do k = 1,nz
+     do j = 1,ny
+        do i = 1,nx
+           wnum2 = akx(i)**2 + aky(k)**2 + akz(j)**2
+           if (wnum2 .gt. real(kmax**2,8)) then
+              wrk(i,j,k,3+n) = zip
+           end if
+        end do
+     end do
+  end do
+
+end subroutine add_reaction
 
 !================================================================================
 !================================================================================
