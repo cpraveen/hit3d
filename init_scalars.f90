@@ -270,7 +270,7 @@ subroutine init_scalar_space(n_scalar)
   if (scalar_type(n_scalar).eq.2001) then
 
      ! how much to smear out the interface
-     h = 4*dz  
+     h = 8.*dz  
 
      ! creating array of scalar
      do k = 1,nz
