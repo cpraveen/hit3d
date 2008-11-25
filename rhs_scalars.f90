@@ -118,18 +118,6 @@ subroutine add_reaction(n)
 
   wrk(:,:,:,3+n) = wrk(:,:,:,3+n) + wrk(:,:,:,n_scalars+5)
 
-  ! Zero out high frequencies in the RHS
-  do k = 1,nz
-     do j = 1,ny
-        do i = 1,nx
-           wnum2 = akx(i)**2 + aky(k)**2 + akz(j)**2
-           if (wnum2 .gt. real(kmax**2,8)) then
-              wrk(i,j,k,3+n) = zip
-           end if
-        end do
-     end do
-  end do
-
 end subroutine add_reaction
 
 !================================================================================
