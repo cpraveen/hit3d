@@ -104,25 +104,12 @@ subroutine add_reaction(n)
   !smean = dble(fields(1,1,1,3+n))
   !call MPI_Bcast(smean, 1, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
 
-  do k = 1,nz
-     do j = 1,ny
-        do i = 1,nx
+  ! bistable reaction        
+  !r = - rrate * rrate*(1.d0 - wrk(:,:,:,0)**2) * (wrk(:,:,:,0)**2 - smean)
 
-           ! local scalar
-           s = dble(wrk(i,j,k,0))
- 
-           ! bistable reaction        
-           !r = - rrate * (1.d0-s*s) * (s-smean)
+  ! KPP
+  wrk(:,:,:,n_scalars+5) = rrate*(1.d0 - wrk(:,:,:,0)**2)
 
-           ! KPP
-           r = rrate*(1-s*s)
-
-           ! reaction rate stored
-           wrk(i,j,k,n_scalars+5) = dcmplx(r,0.0d0)
-
-        end do
-     end do
-  end do
 
   ! FFT the reaction into the Fourier space
   call xFFT3d(1,n_scalars+5)
