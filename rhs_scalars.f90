@@ -94,22 +94,23 @@ subroutine add_reaction(n)
 
   implicit none
 
-  integer :: i,j,k,n
-  real*8  :: r, s, smean, rrate,  wnum2
+  integer :: n
+  real*8  :: scmean, rrate
 
   ! raction rate 
-  rrate = reac_sc(n)/16.
+  rrate = reac_sc(n)
 
   ! self-adjusting threshold
-  !smean = dble(fields(1,1,1,3+n))
-  !call MPI_Bcast(smean, 1, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
-
+  !scmean = dble(fields(1,1,1,3+n))
+  !call MPI_Bcast(scmean, 1, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
+  scmean = 0.d0
+  
   ! bistable reaction        
-  !r = - rrate * rrate*(1.d0 - wrk(:,:,:,0)**2) * (wrk(:,:,:,0)**2 - smean)
+  wrk(:,:,:,n_scalars+5) = rrate * (1.d0 - wrk(:,:,:,0)**2) * &
+                                     (wrk(:,:,:,0) - scmean)
 
-  ! KPP
-  wrk(:,:,:,n_scalars+5) = rrate*(1.d0 - wrk(:,:,:,0)**2)
-
+  ! KPP (for debugging)
+  ! wrk(:,:,:,n_scalars+5) = rrate*(1.d0 - wrk(:,:,:,0)**2)
 
   ! FFT the reaction into the Fourier space
   call xFFT3d(1,n_scalars+5)
