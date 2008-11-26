@@ -101,23 +101,29 @@ subroutine add_reaction(n)
   rrate = reac_sc(n)
 
   ! self-adjusting threshold
-  !scmean = dble(fields(1,1,1,3+n))
-  !call MPI_Bcast(scmean, 1, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
+  scmean = fields(1,1,1,3+n)
+  write(out,*) "scmean:", scmean 
+  call flush(out)
+
+  !call MPI_BCAST(scmean, 1, MPI_REAL8, 0, MPI_COMM_TASK, mpi_err)
+  !write(out,*) "scmean updated:", scmean 
+  !call flush(out)
+
   scmean = 0.d0
   
   ! bistable reaction        
-  wrk(:,:,:,n_scalars+5) = rrate * (1.d0 - wrk(:,:,:,0)**2) * &
+  wrk(:,:,:,0) = rrate * (1.d0 - wrk(:,:,:,0)**2) * &
                                      (wrk(:,:,:,0) - scmean)
 
   ! KPP (for debugging)
-  ! wrk(:,:,:,n_scalars+5) = rrate*(1.d0 - wrk(:,:,:,0)**2)
+  ! wrk(:,:,:,0) = rrate*(1.d0 - wrk(:,:,:,0)**2)
 
   ! FFT the reaction into the Fourier space
-  call xFFT3d(1,n_scalars+5)
+  call xFFT3d(1,0)
 
   ! Adding reaction to the RHS in wrk(:,:,:,3+n)
 
-  wrk(:,:,:,3+n) = wrk(:,:,:,3+n) + wrk(:,:,:,n_scalars+5)
+  wrk(:,:,:,3+n) = wrk(:,:,:,3+n) + wrk(:,:,:,0)
 
 end subroutine add_reaction
 
