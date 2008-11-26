@@ -101,15 +101,8 @@ subroutine add_reaction(n)
   rrate = reac_sc(n)
 
   ! self-adjusting threshold
-  scmean = fields(1,1,1,3+n)
-  write(out,*) "scmean:", scmean 
-  call flush(out)
-
-  !call MPI_BCAST(scmean, 1, MPI_REAL8, 0, MPI_COMM_TASK, mpi_err)
-  !write(out,*) "scmean updated:", scmean 
-  !call flush(out)
-
-  scmean = 0.d0
+  scmean = fields(1,1,1,3+n)/nxyz_all
+  call MPI_BCAST(scmean, 1, MPI_REAL8, 0, MPI_COMM_TASK, mpi_err)
   
   ! bistable reaction        
   wrk(:,:,:,0) = rrate * (1.d0 - wrk(:,:,:,0)**2) * &
