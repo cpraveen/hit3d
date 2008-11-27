@@ -72,7 +72,7 @@ subroutine rhs_scalars
         end do
      end do
 
-     if (scalar_type(n).eq.2001) then
+     if (scalar_type(n).ge.100) then
         call add_reaction(n)
      end if
 
@@ -94,22 +94,43 @@ subroutine add_reaction(n)
 
   implicit none
 
-  integer :: n
+  integer :: n, rtype
   real*8  :: scmean, rrate
+
+  ! reaction type
+  rtype =  scalar_type(n)/100
 
   ! raction rate 
   rrate = reac_sc(n)
 
-  ! self-adjusting threshold
-  scmean = fields(1,1,1,3+n)/nxyz_all
-  call MPI_BCAST(scmean, 1, MPI_REAL8, 0, MPI_COMM_TASK, mpi_err)
-  
-  ! bistable reaction        
-  wrk(:,:,:,0) = rrate * (1.d0 - wrk(:,:,:,0)**2) * &
-                                     (wrk(:,:,:,0) - scmean)
+  select case (rtype)
+  case (1)
 
-  ! KPP (for debugging)
-  ! wrk(:,:,:,0) = rrate*(1.d0 - wrk(:,:,:,0)**2)
+     ! KPP reaction rate
+     wrk(:,:,:,0) = rrate * (1.d0 - wrk(:,:,:,0)**2)
+
+  case (2)
+
+     ! symmetric bistable       
+     wrk(:,:,:,0) = rrate * (1.d0 - wrk(:,:,:,0)**2) * wrk(:,:,:,0)
+
+  case (3)
+
+     ! self-adjusting bistable
+     scmean = fields(1,1,1,3+n)/nxyz_all
+     call MPI_BCAST(scmean, 1, MPI_REAL8, 0, MPI_COMM_TASK, mpi_err)
+          
+     wrk(:,:,:,0) = rrate * (1.d0 - wrk(:,:,:,0)**2) * &
+                                     (wrk(:,:,:,0) - scmean)
+  case default
+
+     write(out,*) "Unknown reaction rate"
+     call flush(out)
+
+     stop
+
+  end select
+
 
   ! FFT the reaction into the Fourier space
   call xFFT3d(1,0)
