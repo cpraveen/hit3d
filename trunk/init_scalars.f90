@@ -5,7 +5,7 @@ subroutine init_scalars
 
   implicit none
 
-  integer :: n_scalar
+  integer :: n_scalar, ic_type, sc_type
 
   write(out,*) 'Generating scalars'
   call flush(out)
@@ -13,7 +13,10 @@ subroutine init_scalars
 
   do n_scalar = 1,n_scalars
 
-     if (scalar_type(n_scalar).lt.2000) then
+     sc_type = scalar_type(n_scalar)
+     ic_type = sc_type - (sc_type/100)*100
+
+     if (ic_type.lt.10) then
 
         call init_scalar_spectrum(n_scalar)
 
@@ -261,13 +264,17 @@ subroutine init_scalar_space(n_scalar)
 
   implicit none
 
-  integer :: k, n_scalar
+  integer :: k, n_scalar, sc_type, ic_type
   real*8  :: zloc, s, h
 
   write(out,*) " Generating scalar # ", n_scalar
   call flush(out)
 
-  if (scalar_type(n_scalar).eq.2001) then
+  sc_type = scalar_type(n_scalar)
+  ic_type = sc_type - (sc_type/100)*100
+
+
+  if (ic_type.eq.11) then
 
      ! how much to smear out the interface
      h = 8.*dz  
