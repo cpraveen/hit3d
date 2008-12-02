@@ -50,6 +50,8 @@ contains
 
     integer :: n
 
+    logical :: there2
+
 
     call stat_velocity
 
@@ -60,9 +62,18 @@ contains
 
        do n = 1, n_scalars
           write(fname,"('sc',i2.2,'.gp')") n
-          open(900,file=fname,position='append')
-          write(900,"(i7,10e15.6)") itime, time, sc_diss(n), moments(3+n,1:2), sc_min(n), sc_max(n)
-          close(900)
+
+          inquire(file=fname, exist=there, opened=there2)
+
+          if (.not.there) then
+             open(100+n,file=fname,form='formatted')
+             write(100+n,'(A)') '# 1.itime 2.time          3.sc.diss       4. mean      5.variance    6.min     7.max'
+          end if
+          if(there.and..not.there2) then
+             open(900,file=fname,position='append')
+          end if
+          write(100+n,"(i7,10e15.6)") itime, time, sc_diss(n), moments(3+n,1:2), sc_min(n), sc_max(n)
+          call flush(100+n)
        end do
     end if
 
@@ -81,7 +92,7 @@ contains
 
     implicit none
 
-    logical :: there, there2
+    logical :: there2
 
     integer :: k, n
 
@@ -158,6 +169,7 @@ contains
 
        ! outputting the energy spectrum
        open(900,file='es.gp',position='append')
+       write(900,"()")
        write(900,"()")
        write(900,"('# ITIME=',i7,' TIME=',e17.8)") ITIME, TIME
        do k = 1,kmax !min(kmax,nx/3)
