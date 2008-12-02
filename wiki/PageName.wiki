@@ -1,8 +1,4 @@
-#summary To Do
-
-= Introduction =
-ToDos need no  introduction.
-
-= Details =
+= To Do = 
 
  # Make a switch so that code can run on fewer processors.  E.g., do everything on the same processors.
+ # Consistent definition of energy and dissipation in the statistics
