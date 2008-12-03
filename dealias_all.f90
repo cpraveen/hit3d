@@ -18,11 +18,7 @@ subroutine dealias_all
   do k = 1,nz
      do j = 1,ny
         do i = 1,nx+2
-!!$           if (abs(akx(i)).gt.nx/3  .or. abs(aky(k)).gt.nx/3 .or. abs(akz(j)).gt.nx/3) then
-!!$              fields(i,j,k,1:3+n_scalars) = zip
-!!$           end if
-
-           if ( akx(i)**2 + aky(k)**2 + akz(j)**2 .gt. kmax**2) then
+           if ( akx(i)**2 + aky(k)**2 + akz(j)**2 .gt. real(kmax,8)**2) then
               fields(i,j,k,1:3+n_scalars) = zip
            end if
 
