@@ -58,6 +58,7 @@ program x_code
      call begin_restart
   endif
 
+  ! checking divergence
   if (task.eq.'hydro') call divergence
 
 
@@ -67,6 +68,7 @@ program x_code
   fos = .true.
 
 
+  ! need to dealias the fields at the beginning
   if (task.eq.'hydro') call dealias_all
 
 
@@ -127,8 +129,9 @@ program x_code
                 dt * ( 1.5d0 * wrk(:,:,:,1:3)  - 0.5d0 * rhs_old(:,:,:,1:3) )
            rhs_old(:,:,:,1:3) = wrk(:,:,:,1:3)
         end if
-
-        call dealias_all
+        
+!!$        ! dealiasing
+!!$        call dealias_all
 
         ! solve for pressure and update velocities so they are incompressible
         call pressure

@@ -2,7 +2,7 @@
 ! M_PARAMETERS - module for all parameters in the calculation: 
 !                such as array dimensions, reynolds numbers, switches/flags etc.
 !
-! Time-stamp: <2008-11-04 17:21:04 (chumakov)>
+! Time-stamp: <2008-12-03 11:38:57 (chumakov)>
 ! Time-stamp: <2008-11-20 17:27:59 MST (vladimirova)>
 !================================================================================
 
@@ -110,9 +110,15 @@ contains
 
     call read_input_file
 
-    ! maximum resolvec wavenumber
-    kmax = int( sqrt(2.0d0) * dble(NX) / 3.0D0)
-!    if (dealias.eq.0) kmax = NX / 2
+    ! maximum resolved wavenumber
+    if (dealias.eq.0) then
+       kmax = nx/3
+    else
+       write(out,*) "*** M_PARAMETERS_INIT: woing dealias flag: ",dealias
+       call flush(out)
+       call my_exit(-1)
+    end if
+    
 
 
   end subroutine m_parameters_init
