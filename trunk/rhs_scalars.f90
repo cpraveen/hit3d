@@ -74,6 +74,7 @@ subroutine rhs_scalars
 
      if (scalar_type(n).ge.100) then
         call add_reaction(n)
+        call dealias_rhs(n)
      end if
 
   end do
@@ -140,6 +141,39 @@ subroutine add_reaction(n)
   wrk(:,:,:,3+n) = wrk(:,:,:,3+n) + wrk(:,:,:,0)
 
 end subroutine add_reaction
+
+!================================================================================
+
+subroutine dealias_rhs(n)
+
+  use m_io
+  use m_parameters
+  use m_work
+  use x_fftw
+
+  implicit none
+
+  integer :: i, j, k, n
+  real*8  :: wnum2
+
+  do k = 1,nz
+     do j = 1,ny
+        do i = 1,nx+1,2
+
+           wnum2 = akx(i)**2 + aky(k)**2 + akz(j)**2
+
+           if (wnum2 .gt. real(kmax**2,8)) then
+              wrk(i  ,j,k,3+n) = zip
+              wrk(i+1,j,k,3+n) = zip
+           end if
+
+        end do
+     end do
+  end do
+
+  return
+
+end subroutine dealias_rhs
 
 !================================================================================
 !================================================================================
