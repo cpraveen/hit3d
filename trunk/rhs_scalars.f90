@@ -10,7 +10,7 @@ subroutine rhs_scalars
   implicit none
 
   integer :: i, j, k, n
-  real*8  :: rtmp1, rtmp2, wnum2
+  real*8  :: rtmp1, rtmp2, wnum2, akmax
 
   ! converting them to the real space
   wrk(:,:,:,1:3) = fields(:,:,:,1:3)
@@ -37,15 +37,32 @@ subroutine rhs_scalars
         call xFFT3d(1,n+2+i)
      end do
 
+     ! kmax in real
+     akmax = real(kmax,8)
+
      ! Assembling the RHS in wrk(:,:,:,3+n)
      do k = 1,nz
         do j = 1,ny
            do i = 1,nx+1,2
 
-              ! Only bothering with the wavenumbers not greater than kmax
-              wnum2 = akx(i)**2 + aky(k)**2 + akz(j)**2
-              if (wnum2 .le. real(kmax**2,8)) then
+!!$              ! Only bothering with the wavenumbers not greater than kmax
+!!$              wnum2 = akx(i)**2 + aky(k)**2 + akz(j)**2
+!!$              if (wnum2 .le. real(kmax**2,8)) then
 
+!  -------------- Edit 3
+              ! If the dealiasing option is 2/3-rule (dealias=0) then we retain the modes
+              ! inside the cube described by $| k_i | \leq  k_{max}$, $i=1,2,3$.
+              ! The rest of the modes is purged
+
+              if  (abs(akx(i)) .gt. akmax .or. &
+                   abs(aky(k)) .gt. akmax .or. &
+                   abs(akz(j)) .gt. akmax) then
+
+                 ! all the wavenumbers that are greater than kmax get zeroed out
+                 wrk(i  ,j,k,3+n) = zip
+                 wrk(i+1,j,k,3+n) = zip
+
+              else
                  ! taking the convective term, multiply it by "i" 
                  ! (see how it's done in x_fftw.f90)
                  ! and adding the diffusion term
@@ -63,18 +80,15 @@ subroutine rhs_scalars
                  wrk(i  ,j,k,3+n) = - rtmp1 - pe(n) * wnum2*fields(i  ,j,k,3+n)
                  wrk(i+1,j,k,3+n) =   rtmp2 - pe(n) * wnum2*fields(i+1,j,k,3+n)
 
-              else
-                 ! all the wavenumbers that are greater than kmax get zeroed out
-                 wrk(i  ,j,k,3+n) = zip
-                 wrk(i+1,j,k,3+n) = zip
               end if
            end do
         end do
      end do
 
+     ! Now adding the reaction part
      if (scalar_type(n).ge.100) then
         call add_reaction(n)
-        call dealias_rhs(n)
+        call dealias_rhs(3+n)
      end if
 
   end do
@@ -120,9 +134,9 @@ subroutine add_reaction(n)
      ! self-adjusting bistable
      scmean = fields(1,1,1,3+n)/nxyz_all
      call MPI_BCAST(scmean, 1, MPI_REAL8, 0, MPI_COMM_TASK, mpi_err)
-          
+
      wrk(:,:,:,0) = rrate * (1.d0 - wrk(:,:,:,0)**2) * &
-                                     (wrk(:,:,:,0) - scmean)
+          (wrk(:,:,:,0) - scmean)
   case default
 
      write(out,*) "Unknown reaction rate"
@@ -154,17 +168,22 @@ subroutine dealias_rhs(n)
   implicit none
 
   integer :: i, j, k, n
-  real*8  :: wnum2
+  real*8  :: wnum2, akmax
+
+  akmax = real(kmax,8)
 
   do k = 1,nz
      do j = 1,ny
         do i = 1,nx+1,2
 
-           wnum2 = akx(i)**2 + aky(k)**2 + akz(j)**2
+!!$           wnum2 = akx(i)**2 + aky(k)**2 + akz(j)**2
+!!$           if (wnum2 .gt. real(kmax**2,8)) then
 
-           if (wnum2 .gt. real(kmax**2,8)) then
-              wrk(i  ,j,k,3+n) = zip
-              wrk(i+1,j,k,3+n) = zip
+           if  (abs(akx(i)) .gt. akmax .or. &
+                abs(aky(k)) .gt. akmax .or. &
+                abs(akz(j)) .gt. akmax) then
+              wrk(i  ,j,k,n) = zip
+              wrk(i+1,j,k,n) = zip
            end if
 
         end do
