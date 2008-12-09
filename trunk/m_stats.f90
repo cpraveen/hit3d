@@ -468,6 +468,7 @@ contains
           write(fname,"('es_',i2.2,'.gp')") n
           open(900,file=fname,position='append')
           write(900,"()")
+          write(900,"()")
           write(900,"('# ITIME=',i7,' TIME=',e17.8)") ITIME, TIME
           do k = 1,kmax
              write(900,"(i4,4e15.6)") k,e_spec(k)
