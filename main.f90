@@ -131,7 +131,7 @@ program x_code
         end if
         
         ! dealiasing
-        call dealias_all
+        ! call dealias_all
 
         ! solve for pressure and update velocities so they are incompressible
         call pressure
