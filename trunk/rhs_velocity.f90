@@ -104,18 +104,6 @@ subroutine rhs_velocity
      do j = 1,ny
         do i = 1,nx+1,2
 
-!  -------------- Edit 1
-
-!!$           ! Only bothering with wavenumbers less than or equal to kmax
-!!$           wnum2 = akx(i)**2 + aky(k)**2 + akz(j)**2
-!!$           if (wnum2 .le. real(kmax**2,8)) then
-
-!  -------------- Edit 2
-
-!!$           ! saving a little time by comparing two pre-computed numbers
-!!$           if ( t1(5) .le. wrk(i,j,k,4) ) then
-
-!  -------------- Edit 3
            ! If the dealiasing option is 2/3-rule (dealias=0) then we retain the modes
            ! inside the cube described by $| k_i | \leq  k_{max}$, $i=1,2,3$.
            ! The rest of the modes is purged

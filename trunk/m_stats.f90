@@ -70,7 +70,7 @@ contains
              write(100+n,'(A)') '# 1.itime 2.time          3.sc.diss       4. mean      5.variance    6.min     7.max'
           end if
           if(there.and..not.there2) then
-             open(900,file=fname,position='append')
+             open(100+n,file=fname,position='append')
           end if
           write(100+n,"(i7,10e15.6)") itime, time, sc_diss(n), moments(3+n,1:2), sc_min(n), sc_max(n)
           call flush(100+n)

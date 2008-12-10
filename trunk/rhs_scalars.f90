@@ -45,15 +45,13 @@ subroutine rhs_scalars
         do j = 1,ny
            do i = 1,nx+1,2
 
-!  -------------- Edit 3
               ! If the dealiasing option is 2/3-rule (dealias=0) then we retain the modes
               ! inside the cube described by $| k_i | \leq  k_{max}$, $i=1,2,3$.
               ! The rest of the modes is purged
 
-
-              ! Only bothering with the wavenumbers not greater than kmax
-              wnum2 = akx(i)**2 + aky(k)**2 + akz(j)**2
-              if (wnum2 .gt. real(kmax**2,8)) then
+              if ( abs(akx(i)).gt.akmax .or. &
+                   abs(aky(k)).gt.akmax .or. &
+                   abs(akz(j)).gt.akmax ) then
 
                  ! all the wavenumbers that are greater than kmax get zeroed out
                  wrk(i  ,j,k,3+n) = zip
@@ -71,8 +69,7 @@ subroutine rhs_scalars
                  rtmp1 =   akx(i+1)*wrk(i+1,j,k,3+n) + aky(k)*wrk(i+1,j,k,4+n) + akz(j)*wrk(i+1,j,k,5+n)
                  rtmp2 =   akx(i  )*wrk(i  ,j,k,3+n) + aky(k)*wrk(i  ,j,k,4+n) + akz(j)*wrk(i  ,j,k,5+n)
 
-                 ! also using the fact that the waveunmbers for (i,j,k) are the same
-                 ! as wavenumbers for (i+1,j,k)
+                 wnum2 = akx(i)**2 + aky(k)**2 + akz(j)**2
 
                  wrk(i  ,j,k,3+n) = - rtmp1 - pe(n) * wnum2*fields(i  ,j,k,3+n)
                  wrk(i+1,j,k,3+n) =   rtmp2 - pe(n) * wnum2*fields(i+1,j,k,3+n)
@@ -173,12 +170,10 @@ subroutine dealias_rhs(n)
      do j = 1,ny
         do i = 1,nx+1,2
 
-!!$           wnum2 = akx(i)**2 + aky(k)**2 + akz(j)**2
-!!$           if (wnum2 .gt. real(kmax**2,8)) then
+           if ( abs(akx(i)).gt.akmax .or. &
+                abs(aky(k)).gt.akmax .or. &
+                abs(akz(j)).gt.akmax ) then
 
-           if  (abs(akx(i)) .gt. akmax .or. &
-                abs(aky(k)) .gt. akmax .or. &
-                abs(akz(j)) .gt. akmax) then
               wrk(i  ,j,k,n) = zip
               wrk(i+1,j,k,n) = zip
            end if
