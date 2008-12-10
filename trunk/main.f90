@@ -130,8 +130,8 @@ program x_code
            rhs_old(:,:,:,1:3) = wrk(:,:,:,1:3)
         end if
         
-!!$        ! dealiasing
-!!$        call dealias_all
+        ! dealiasing
+        call dealias_all
 
         ! solve for pressure and update velocities so they are incompressible
         call pressure

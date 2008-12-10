@@ -45,18 +45,15 @@ subroutine rhs_scalars
         do j = 1,ny
            do i = 1,nx+1,2
 
-!!$              ! Only bothering with the wavenumbers not greater than kmax
-!!$              wnum2 = akx(i)**2 + aky(k)**2 + akz(j)**2
-!!$              if (wnum2 .le. real(kmax**2,8)) then
-
 !  -------------- Edit 3
               ! If the dealiasing option is 2/3-rule (dealias=0) then we retain the modes
               ! inside the cube described by $| k_i | \leq  k_{max}$, $i=1,2,3$.
               ! The rest of the modes is purged
 
-              if  (abs(akx(i)) .gt. akmax .or. &
-                   abs(aky(k)) .gt. akmax .or. &
-                   abs(akz(j)) .gt. akmax) then
+
+              ! Only bothering with the wavenumbers not greater than kmax
+              wnum2 = akx(i)**2 + aky(k)**2 + akz(j)**2
+              if (wnum2 .gt. real(kmax**2,8)) then
 
                  ! all the wavenumbers that are greater than kmax get zeroed out
                  wrk(i  ,j,k,3+n) = zip
