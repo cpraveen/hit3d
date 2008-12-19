@@ -77,8 +77,10 @@ contains
        end do
     end if
 
-    write(out,9000) ITIME, TIME
-    call flush(out)
+    if (task_split) then
+       write(out,9000) ITIME, TIME
+       call flush(out)
+    end if
 
     return
 9000 format('ITIME=',i7,' TIME=',e15.7,' Stat file is written.')

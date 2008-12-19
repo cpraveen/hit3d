@@ -2,7 +2,7 @@
 ! M_PARAMETERS - module for all parameters in the calculation: 
 !                such as array dimensions, reynolds numbers, switches/flags etc.
 !
-! Time-stamp: <2008-12-03 11:38:57 (chumakov)>
+! Time-stamp: <2008-12-18 17:42:49 (chumakov)>
 ! Time-stamp: <2008-11-20 17:27:59 MST (vladimirova)>
 !================================================================================
 
@@ -102,7 +102,7 @@ contains
     call get_run_name
 
     ! constants
-    PI     = 4.d0 * atan(1.d0)
+    PI     = four * atan(one)
     TWO_PI = two * PI
 
     ! switches
@@ -114,7 +114,7 @@ contains
     if (dealias.eq.0) then
        kmax = nx/3
     else
-       write(out,*) "*** M_PARAMETERS_INIT: woing dealias flag: ",dealias
+       write(out,*) "*** M_PARAMETERS_INIT: wrong dealias flag: ",dealias
        call flush(out)
        call my_exit(-1)
     end if
@@ -170,8 +170,7 @@ contains
     if(.not.there) then
        write(out,*) '*** cannot find the input file'
        call flush(out)
-       call MPI_FINALIZE(ierr)
-       stop
+       call my_exit(-1)
     end if
 
     ! now the variable "passed" will show if the parameters make sense
@@ -342,7 +341,16 @@ contains
     ! -------------------------------------------------------------
 
     read(in,*,ERR=9000,END=9000) nptot
+! DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+    if (.not.task_split .and. nptot > 0) then
+       write(out,*) "tasks are not split, making nptot=0"
+       nptot = 0
+    end if
+! DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+
     write(out,*) 'nptot    =',nptot
+
+
     read(in,*,ERR=9000,END=9000) particles_tracking_scheme
     write(out,*) 'particles_tracking_scheme', particles_tracking_scheme
 
@@ -441,6 +449,19 @@ contains
     ! ------------------------------------------------------------
 
 
+!--------------------------------------------------------------------------------
+!  Checking if the task splitting conflicts with particle advection.  Currently
+!  we canot have split=never and have particles.  This is to be resolved later,
+!  now my head is spinning already.
+!--------------------------------------------------------------------------------
+    if (.not.task_split .and. nptot.gt.0) then
+       write(out,*) "*** READ_INPUT_FILE: Cannot have .not.task_split and nptot > 0.  Stopping"
+       call flush(out)
+       passed = 0
+    end if
+!--------------------------------------------------------------------------------
+
+
     count = 1
     call MPI_REDUCE(passed,passed_all,count,MPI_INTEGER4,MPI_MIN,0,MPI_COMM_WORLD,mpi_err)
     count = 1
@@ -459,7 +480,5 @@ contains
     stop
   end subroutine read_input_file
 
-
-
-
+!================================================================================
 end module m_parameters

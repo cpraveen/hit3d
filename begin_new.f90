@@ -25,10 +25,10 @@ subroutine begin_new
     call io_write_4
   end if
 
-  call fields_to_stats
-
-
-  if (task.eq.'stats') call stat_main
+  if (task_split) then
+     call fields_to_stats
+     if (task.eq.'stats') call stat_main
+  end if
 
   return
 end subroutine begin_new

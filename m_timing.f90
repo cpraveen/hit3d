@@ -36,6 +36,7 @@ contains
     call MPI_BCAST(job_runlimit,1,MPI_INTEGER4,0,MPI_COMM_WORLD,mpi_err)
 
     write(out,*) 'job_runlimit: ',job_runlimit
+    call flush(out)
 
     return
 

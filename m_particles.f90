@@ -571,8 +571,8 @@ contains
     ! otherwise proceed and redefine the particles_last_dump
     particles_last_dump = itime
 
-    write(out,*) 'writing the BINARY particle restart file'
-    call flush(out)
+!!$    write(out,*) 'writing the BINARY particle restart file'
+!!$    call flush(out)
 
     ! ------------------------------------------------------------------------------
     ! the slave nodes send their particles' IDs and coordinates to the master node
@@ -639,7 +639,7 @@ contains
        write(89) TIME
 
        close(89,status='keep')
-       write(out,*) 'particle BINARY restart file written.'
+       write(out,'("particle BINARY file written:",i7,e15.6)') itime, time
        call flush(out)
     end if
 

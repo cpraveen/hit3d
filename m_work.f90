@@ -1,7 +1,7 @@
 !================================================================================
 ! M_WORK - module that contains working arrays wrk1....wrk15.
 !
-! Time-stamp: <2008-11-06 11:14:39 (chumakov)>
+! Time-stamp: <2008-12-18 17:21:56 (chumakov)>
 !================================================================================
 module m_work
 
@@ -24,20 +24,28 @@ module m_work
 contains
 
 !================================================================================
+!================================================================================
+!================================================================================
+!================================================================================
   subroutine m_work_init
 
     use m_parameters
     implicit none
 
-    write(out,*) "Inside m_work_init ",task
+    write(out,*) "Inside m_work_init: ",task
     call flush(out)
 
     ! allocating work arrays
     if (task.eq.'hydro')  then
+
        call m_work_allocate(max(6,5+n_scalars))
+
     elseif (task.eq.'stats')  then
+
        call m_work_allocate(6)
+
     elseif (task.eq.'parts') then
+
        ! required recources are different for the "parts" part of the code
        ! we need several layers of velocities for velocity interpolation
        select case (particles_tracking_scheme)
@@ -57,8 +65,9 @@ contains
        call flush(out)
 
     else
-       print *,'TASK variable is set in such a way that I dont know how to allocate work arrays'
-       print *,'task = ',task
+       write(out,*) 'TASK variable is set in such a way that I dont know how to allocate work arrays'
+       write(out,*) 'task = ',task
+       call my_exit(-1)
     end if
 
     write(out,*) "Finished m_work_init"
@@ -68,13 +77,16 @@ contains
   end subroutine m_work_init
 
 !================================================================================
+!================================================================================
+!  allocating and defining the prescribed number of arrays
+!================================================================================
+!================================================================================
 
-  ! --- allocating and zeroing out the prescribed number of arrays
   subroutine m_work_allocate(number)
 
     implicit none
     integer :: number
-    integer :: i,ierr
+    integer :: i, ierr, ierr_total
 
     ierr = 0
 
@@ -100,20 +112,20 @@ contains
        stop
     end if
 
-    write(out,"('allocated wrk(nx+2,ny,nz,0:',i3,')')") number
-    write(out,"('allocated rhs_old(nx+2,ny,nz,1:',i3,')')") 3+n_scalars
+    if (allocated(wrk)) write(out,"('allocated wrk(nx+2,ny,nz,0:',i3,')')") number
+    if (allocated(rhs_old)) write(out,"('allocated rhs_old(nx+2,ny,nz,1:',i3,')')") 3+n_scalars
     call flush(out)
 
-
-
     tmp4 = 0.0
-    wrk = 0.0d0
+    wrk = zip
     if (allocated(rhs_old)) rhs_old = 0.d0
 
 
     return
   end subroutine m_work_allocate
 
+!================================================================================
+!================================================================================
 
   subroutine m_work_exit
     implicit none

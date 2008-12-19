@@ -23,9 +23,9 @@ contains
        write(out,*) "Cannot allocate fields, stopping."
        call my_exit(-1)
     end if
-    fields = 0.0d0
+    fields = zip
 
-    write(out,*) "Allocated",n," fields."
+    write(out,"('Allocated ',i3,' fields.')") n
     call flush(out)
 
 
@@ -326,37 +326,6 @@ contains
 
 !================================================================================
 !================================================================================
-
-
-
-
-
-
-
-
-!!$!================================================================================
-!!$
-!!$  subroutine fields_dealias
-!!$
-!!$    use m_parameters
-!!$    use x_fftw
-!!$    implicit none
-!!$
-!!$    integer :: i, j, k, n_shell
-!!$
-!!$    do k = 1,nz
-!!$       do j = 1,ny
-!!$          do i  = 1,nx
-!!$
-!!$             n_shell = nint(sqrt(real(akx(i)**2 + aky(k)**2 + akz(j)**2, 4)))
-!!$             if (n_shell .gt. kmax) fields(i,j,k,:) = zip
-!!$          end do
-!!$       end do
-!!$    end do
-!!$
-!!$    return
-!!$  end subroutine fields_dealias
-!!$
 !================================================================================
 !================================================================================
 !================================================================================

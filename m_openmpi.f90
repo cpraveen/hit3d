@@ -1,7 +1,7 @@
 !================================================================================
 ! Module contains interface to OpenMPI
 !
-! Time-stamp: <2008-09-09 11:17:57 (chumakov)>
+! Time-stamp: <2008-12-18 17:46:28 (chumakov)>
 !================================================================================
 
 
@@ -30,8 +30,10 @@ module m_openmpi
 
   integer(kind=MPI_INTEGER_KIND) :: color, key
 
-  character*5 :: task
+  character*5 :: task, split="nevah"
   character*10 :: run_name_local
+
+  logical :: task_split=.false.
 
 !================================================================================
 contains
@@ -45,8 +47,14 @@ contains
     integer*4 :: np_local
     integer :: i
 
-    ! first getting the run name (it's local, not  global run_name)
-    call openmpi_get_run_name
+    ! first getting the run name form the command line 
+    ! (it's local, not  global run_name)
+    ! also getting the parameter "split" which governs the process splitting:
+    ! split="split" means that hydro, statistics and particles are assigned three 
+    ! separate process groups (they differ by the char*5 parameter "task").
+    ! split="never" (default if the parameter is missing) means that all
+    ! processes do all tasks. (does not work for the particles at this point)
+    call openmpi_get_command_line
 
 
     ! initializing MPI environment
@@ -55,7 +63,26 @@ contains
     call MPI_Comm_rank(MPI_COMM_WORLD,myid_world,mpi_err)
 
 !--------------------------------------------------------------------------------
-!  splitting the communicator into several parts (hydro, stat, particles etc)
+!  Looking at the command line parameter called "split".  If it equals "split"
+!  then we define task_split=.true.  If not, task_split remains .false. (default)
+!--------------------------------------------------------------------------------
+    if (split == "split") task_split = .true.
+
+!--------------------------------------------------------------------------------
+!  First check if we need to do any task splitting.  If we don't (split="never")
+!  then we define task="hydro" and do a ficticious split with uniform color of
+!  all processors.
+!--------------------------------------------------------------------------------
+    if (.not. task_split) then
+!!$       print *,'not splitting into task groups, all procs are "hydro"'
+       task = 'hydro'
+       color = 0
+       myid = myid_world
+       goto 1000
+    end if
+
+!--------------------------------------------------------------------------------
+!  Definition of processor groups: hydro, stats, parts etc. for task splitting.
 !--------------------------------------------------------------------------------
 
     ! first finding out if there are any particles involved.
@@ -126,7 +153,6 @@ contains
     end if
 
     ! splitting the communicator into several parts
-    ! (currently two)
     ! 1. hydro
     ! 2. stats
     ! 3. parts
@@ -144,12 +170,17 @@ contains
        color = 2
        myid = myid_world - numprocs_hydro - numprocs_stats
     end if
+
+!--------------------------------------------------------------------------------   
+!  The actual task splitting happens here
+!--------------------------------------------------------------------------------   
+1000 continue
     call MPI_COMM_SPLIT(MPI_COMM_WORLD,color,myid,MPI_COMM_TASK,mpi_err)
     call MPI_COMM_SIZE(MPI_COMM_TASK,numprocs,mpi_err)
     call MPI_COMM_RANK(MPI_COMM_TASK,myid,mpi_err)
 
 
-    ! seeing if this is the master process
+    ! each task will have its master process 
     master = 0
     iammaster = .false.
     if (myid.eq.master) iammaster=.true.
@@ -182,7 +213,7 @@ contains
 
 !================================================================================
 
-  subroutine openmpi_get_run_name
+  subroutine openmpi_get_command_line
     implicit none
 
     character*80 :: tmp_str
@@ -191,7 +222,7 @@ contains
     ! reading the run_name from the command line
     if(iargc().eq.0) then
        call getarg(0,tmp_str)
-       print*, 'Format: ',trim(tmp_str),' <run name>'
+       print*, 'Format: ',trim(tmp_str),' (run name) ["split"/"never"]'
        stop
     end if
     call getarg(1,run_name_local)
@@ -202,7 +233,11 @@ contains
        stop
     end if
 
-  end subroutine openmpi_get_run_name
+    ! getting the split parameter, if it's there
+    if(iargc().eq.2) call getarg(2,split)
+       
+
+  end subroutine openmpi_get_command_line
 
 !================================================================================
 
