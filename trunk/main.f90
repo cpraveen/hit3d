@@ -16,10 +16,10 @@ program x_code
   implicit none
 
   integer :: n
+  character :: sym
 
-
-  call m_openmpi_init
   call m_timing_init   ! Setting the time zero
+  call m_openmpi_init
   call m_io_init
   call m_parameters_init
   call m_fields_init
@@ -80,14 +80,20 @@ program x_code
 
      ! getting the file extension for current iteration
      call get_file_ext
-
-     select case (task)
-
+!--------------------------------------------------------------------------------
+!  now performing the core of the cycle.
+!  This is done with "if" rather than "select case" because if we're not
+!  splitting tasks then we want everything to be done consequently by the
+!  same set of processors.
+!  
+!  All the syncronization calls (fields_to_parts, fields_to_stats) will be
+!  called only if (task_split).
+!--------------------------------------------------------------------------------
 !--------------------------------------------------------------------------------
 !                             HYDRO PART
 !--------------------------------------------------------------------------------
-     case ('hydro')
-
+     ! note that even if we're not task splitting, 'hydro' part is always there
+     hydro: if (task.eq.'hydro') then
 
         ! RHS for passive scalars (write)
         call rhs_scalars
@@ -95,7 +101,7 @@ program x_code
         ! now the velocities in x-space are contained in wrk1...3
         ! if we are moving particles, then we want to send the velocity field
         ! to the "parts" part of the code
-        call fields_to_parts
+        if (task_split) call fields_to_parts
 
 
         ! advance scalars - either Euler or Adams-Bashforth
@@ -129,7 +135,7 @@ program x_code
                 dt * ( 1.5d0 * wrk(:,:,:,1:3)  - 0.5d0 * rhs_old(:,:,:,1:3) )
            rhs_old(:,:,:,1:3) = wrk(:,:,:,1:3)
         end if
-        
+
         ! dealiasing
         ! call dealias_all
 
@@ -149,13 +155,18 @@ program x_code
         ! CPU usage statistics
         if (mod(itime,iprint1).eq.0) then
            call m_timing_check
-           write(out,9000) itime,time,dt,courant,cpu_hrs,cpu_min,cpu_sec
+           if (mod(itime,iwrite4).eq.0) then
+              sym = "*"
+           else
+              sym = " "
+           end if
+           write(out,9000) itime,time,dt,courant,cpu_hrs,cpu_min,cpu_sec,sym
            call flush(out)
         end if
 
         ! send the velocities to the "stats" part of the code for statistics
         if (mod(itime,iprint1).eq.0 .or. mod(itime,iwrite4).eq.0) then
-           call fields_to_stats
+           if (task_split) call fields_to_stats
            ! checking if we need to stop the calculations due to simulation time
            if (TIME.gt.TMAX) call my_exit(1)
 
@@ -168,34 +179,39 @@ program x_code
            end if
 
         end if
-
+     end if hydro
 !--------------------------------------------------------------------------------
 !                             STATISTICS PART
 !--------------------------------------------------------------------------------
-     case ('stats')
+     stats: if (task.eq.'stats' .or. .not.task_split) then
 
         if (mod(itime,iprint1).eq.0 .or. mod(itime,iwrite4).eq.0) then
-           call fields_to_stats
+           if (task_split) call fields_to_stats
            if (mod(itime,iprint1).eq.0) call stat_main
            if (mod(itime,iwrite4).eq.0) call io_write_4
 
-           ! checking if we need to stop the calculations due to simulation time
-           if (TIME.gt.TMAX) call my_exit(1)
+           ! if this is a separate set of processors, then...
+           stats_task_split: if (task_split) then
 
-
-           ! checking if we need to start advancing scalars
-           if (.not. int_scalars .and. time .gt. TSCALAR) then
-              int_scalars = .true.
-              write(out,*) "Starting to move the scalars."
-              call flush(out)
-           end if
+              ! checking if we need to stop the calculations due to simulation time
+              if (TIME.gt.TMAX) call my_exit(1)
+              ! checking if we need to start advancing scalars
+              if (.not. int_scalars .and. time .gt. TSCALAR) then
+                 int_scalars = .true.
+                 write(out,*) "Starting to move the scalars."
+                 call flush(out)
+              end if
+           end if stats_task_split
 
         end if
+     end if stats
 
 !--------------------------------------------------------------------------------
 !                             PARTICLE PARTS
+! NOTE: This is not enabled to work when task_split.  Need to reurn to it later.
 !--------------------------------------------------------------------------------
-     case ('parts')
+     particles: if (task.eq.'parts') then
+        
         call fields_to_parts
 
         if (int_particles) then
@@ -206,28 +222,28 @@ program x_code
         if (mod(itime,iprint1).eq.0 .or. mod(itime,iwrite4).eq.0) then
            if (TIME.gt.TMAX) call my_exit(1)
         end if
-
-!--------------------------------------------------------------------------------
-!                             OTHER PARTS
-!--------------------------------------------------------------------------------
-
-     case default
-
-        write(out,*) "skipping the time step",ITIME
-        call flush(out)
-
-     end select
-
+     end if particles
+!!$!--------------------------------------------------------------------------------
+!!$!                             OTHER PARTS
+!!$!--------------------------------------------------------------------------------
+!!$
+!!$
+!!$     write(out,*) "skipping the time step",ITIME
+!!$     call flush(out)
+!!$
+!!$
 !--------------------------------------------------------------------------------
 !                             COMMON PARTS
 !--------------------------------------------------------------------------------
 
 
-     ! checking for the run time every 10 iterations
+     ! every 10 iterations checking 
+     ! - for the run time: are we getting close to the job_runlimit?
+     ! - for the user termination: is there a file "stop" in directory?
      if (mod(ITIME,10).eq.0) then
 
         ! synchronize all processors, hard
-        call MPI_BARRIER(MPI_COMM_WORLD,mpi_err)
+!!$     call MPI_BARRIER(MPI_COMM_WORLD,mpi_err)
 
         if (myid_world.eq.0) call m_timing_check
         count = 1
@@ -235,14 +251,18 @@ program x_code
         if (cpu_min_total+30 .gt. job_runlimit) call my_exit(2)
 
         ! user termination.  If the file "stop" is in the directory, stop
-	inquire(file='stop',exist=there)
-	if (there) call my_exit(3)
+        inquire(file='stop',exist=there)
+        if (there) call my_exit(3)
      end if
 
 
 
 100  continue
 !================================================================================
+
+!--------------------------------------------------------------------------------
+!  In a (very unlikely) case when we've gone to ITMAX, dump the restart file
+!--------------------------------------------------------------------------------
 
      ITIME = ITIME-1
      if (task.eq.'hydro') call restart_write
@@ -251,20 +271,11 @@ program x_code
      file_ext = 'xxxxxx'
      last_dump = 0
      if (task.eq.'hydro') call restart_write_parallel
-     
 
      call my_exit(0)
-
-
-9000 format('ITIME=',i6,3x,'TIME=',f8.4,4x,'DT=',f8.5,3x,'Courn= ',f6.4, &
-          2x,'CPU:(',i4.4,':',i2.2,':',i2.2,')')
-
-!================================================================================
-!!$     call x_fftw_allocate(-1)
-!!$     call m_work_exit
-!!$     call m_fields_exit
-!!$     call m_io_exit
      call m_openmpi_exit
 
      stop
+9000 format('ITIME=',i6,3x,'TIME=',f8.4,4x,'DT=',f8.5,3x,'Courn= ',f6.4, &
+          2x,'CPU:(',i4.4,':',i2.2,':',i2.2,')',a1)
    end program x_code

@@ -43,7 +43,7 @@ contains
        end do
 
        ! reducing to the master process to find out the total number of forced nodes
-       write(out,*) 'before reducing'; call flush(out)
+!!$       write(out,*) 'before reducing'; call flush(out)
        count = 1
        call MPI_REDUCE(n_forced_nodes, n_forced_nodes_total, count,  &
             MPI_INTEGER4,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
