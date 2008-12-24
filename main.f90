@@ -91,8 +91,8 @@ program x_code
 !--------------------------------------------------------------------------------
 !--------------------------------------------------------------------------------
 !                             HYDRO PART
+!   note that even if we're not task splitting, 'hydro' part is always there
 !--------------------------------------------------------------------------------
-     ! note that even if we're not task splitting, 'hydro' part is always there
      hydro: if (task.eq.'hydro') then
 
         ! RHS for passive scalars (write)
@@ -208,7 +208,7 @@ program x_code
 
 !--------------------------------------------------------------------------------
 !                             PARTICLE PARTS
-! NOTE: This is not enabled to work when task_split.  Need to reurn to it later.
+! NOTE: This is not enabled to work when task_split.  Need to return to it later.
 !--------------------------------------------------------------------------------
      particles: if (task.eq.'parts') then
         
