@@ -1,8 +1,8 @@
 !==============================================================================!
 !
-!  fast Fourier transform that uses FFTW3 library,
+!  Fast Fourier Transform that uses FFTW3 library,
 !  pseudospectral DNS code
-!  Copyright (C) 2006 Sergei Chumakov, Misha Stepanov
+!  Copyright (C) 2006 Sergei Chumakov, Natalia Vladimirova, Misha Stepanov
 !
 !  This program is free software; you can redistribute it and/or modify
 !  it under the terms of the GNU General Public License as published by
@@ -55,14 +55,17 @@ MODULE x_fftw
   integer(kind=8) :: plan_f_c2c, plan_b_c2c
 
   ! k-vectors ("a" added as arrays are real
-  ! (GOD is REAL, unless declared INTEGER.))
   real(kind=8), allocatable :: akx(:), aky(:), akz(:)
   real(kind=8), allocatable :: coskx2(:), cosky2(:), coskz2(:)
   real(kind=8), allocatable :: sinkx2(:), sinky2(:), sinkz2(:)
   integer(kind=4), allocatable :: rezkax(:), rezkay(:), rezkaz(:)
 
-  integer :: nx21
-  real(kind=8) :: norm
+  ! auxiliary parameters
+  integer(kind=4) :: nx21
+  real(kind=8)    :: norm
+
+  ! array that contains indicator of aliasing when products are taken
+  integer(kind=1), allocatable :: ialias(:,:,:)
 
 !==============================================================================!
 !==============================================================================!
@@ -98,7 +101,8 @@ CONTAINS
             coskx2(nx + 2), cosky2(nz), coskz2(nx), &
             sinkx2(nx + 2), sinky2(nz), sinkz2(nx), &
             order(numprocs - 1), &
-            buff2(nx+2, nz, nz), stat = ierr)
+            buff2(nx+2, nz, nz), &
+            ialias(nx+2, ny, nz), stat = ierr) 
 
 
 
@@ -122,6 +126,7 @@ CONTAINS
        buff2 = zip
        z_stick = zip
        order = 0
+       ialias = 0
 
 
 
@@ -130,7 +135,7 @@ CONTAINS
           deallocate(plan_r2c, plan_c2r, plan_r2c_f, plan_c2r_f, &
                xy_sheet, buff, z_stick, order, &
                akx, aky, akz, rezkax, rezkay, rezkaz, coskx2, cosky2, coskz2,&
-               sinkx2, sinky2, sinkz2, buff2)
+               sinkx2, sinky2, sinkz2, buff2, ialias)
        end if
        write(out,*) "x_fftw_deallocated."
        call flush(out)
@@ -150,7 +155,8 @@ CONTAINS
 
     implicit none
 
-    integer :: itmp, ix, iy, iz, n
+    integer :: itmp, ix, iy, iz, n, i, j, k
+    real *8 :: rnx3
 
     write(out, *) 'Initializing FFT arrays.'
     call flush(out)
@@ -278,13 +284,28 @@ CONTAINS
        rezkay(iy) = 0
        if (dabs(aky(iy)) > (real(ny, 8)) / 3.0D0) rezkay(iy) = 1
     end do
-    do iz = 1, nz_all
+    ! in Fourier space the z wavenumbers are aligned along the second index
+    do iz = 1, ny
        akz(iz) = real(iz - 1, 8)
        if (akz(iz) > (0.5D0 * real(nz_all, 8))) akz(iz) = akz(iz) - real(nz_all, 8)
        coskz2(iz) = dcos(half * akz(iz))
        sinkz2(iz) = dsin(half * akz(iz))
        rezkaz(iz) = 0
        if (dabs(akz(iz)) > (real(nz_all, 8)) / 3.0D0) rezkaz(iz) = 1
+    end do
+
+    ! Definition of the array ialias.
+    ! The array ialias is just the number of wavenumbers at (i,j,k) that have
+    ! their magnitude higher than nx/3.  This is needed in dealiasing procedures.
+    rnx3 = real(nx/3, 8)
+    do k = 1,nz
+       if (abs(aky(k)) .gt. rnx3) ialias(:,:,k) = 1
+       do j = 1,ny
+          if (abs(akz(j)) .gt. rnx3) ialias(:,j,k) = ialias(:,j,k) + 1
+          do i = 1,nx+2
+             if (abs(akx(i)) .gt. rnx3) ialias(i,j,k) = ialias(i,j,k) + 1
+          end do
+       end do
     end do
 
 

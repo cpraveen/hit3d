@@ -22,6 +22,16 @@ subroutine rhs_scalars
   if (.not.int_scalars) return
 
 
+
+!  DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+  if (dealias.ne.0) then
+     write(out,*) 'Dealias is not zero in rhs_scalars, stopping :',dealias
+     call flush(out)
+     call my_exit(-1)
+  end if
+!  DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+
+
   ! Do each scalar at a time
 
   ! Trying to keep the velocities in wrk1:3 intact because they
