@@ -59,10 +59,7 @@ subroutine rhs_scalars
               ! inside the cube described by $| k_i | \leq  k_{max}$, $i=1,2,3$.
               ! The rest of the modes is purged
 
-              if ( abs(akx(i)).gt.akmax .or. &
-                   abs(aky(k)).gt.akmax .or. &
-                   abs(akz(j)).gt.akmax ) then
-
+              if (ialias(i,j,k) .gt. 0) then
                  ! all the wavenumbers that are greater than kmax get zeroed out
                  wrk(i  ,j,k,3+n) = zip
                  wrk(i+1,j,k,3+n) = zip
