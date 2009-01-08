@@ -106,15 +106,15 @@ subroutine restart_read
            ! first chunk belongs to the root
 
            ! uncomment this when stop using the legacy codes that switch u,v,w into w,v,u
-           ! read(91) (((fields(i,j,k,n),i=1,nx),j=1,ny),k=1,nz)
+           read(91) (((fields(i,j,k,n),i=1,nx),j=1,ny),k=1,nz)
 
-           if (n.le.3) then
-              write(out,*) 'LEGACY CODE COMPATIBILITY: u,v,w <-> w,v,u'
-              call flush(out)
-              read(91) (((fields(i,j,k,4-n),i=1,nx),j=1,ny),k=1,nz)
-           else
-              read(91) (((fields(i,j,k,n),i=1,nx),j=1,ny),k=1,nz)
-           end if
+!!$           if (n.le.3) then
+!!$              write(out,*) 'LEGACY CODE COMPATIBILITY: u,v,w <-> w,v,u'
+!!$              call flush(out)
+!!$              read(91) (((fields(i,j,k,4-n),i=1,nx),j=1,ny),k=1,nz)
+!!$           else
+!!$              read(91) (((fields(i,j,k,n),i=1,nx),j=1,ny),k=1,nz)
+!!$           end if
 
            ! the rest gets read and sent to the appropriate porcess
            do id_to = 1,numprocs-1
@@ -141,16 +141,16 @@ subroutine restart_read
            tag = (3+nums_read) * myid + n-1
 
            ! uncomment this when stop using the legacy codes that switch u,v,w into w,v,u
-           ! call MPI_RECV(fields(1,1,1,n),count,MPI_REAL8,0,tag,MPI_COMM_TASK,mpi_status,mpi_err)
+           call MPI_RECV(fields(1,1,1,n),count,MPI_REAL8,0,tag,MPI_COMM_TASK,mpi_status,mpi_err)
 
-           write(out,*) 'LEGACY CODE COMPATIBILITY: u,v,w <-> w,v,u'
-           call flush(out)
-           call MPI_RECV(wrk(1,1,1,1),count,MPI_REAL8,0,tag,MPI_COMM_TASK,mpi_status,mpi_err)
-           if (n.le.3) then
-              fields(:,:,:,4-n) = wrk(:,:,:,1)
-           else
-              fields(:,:,:,n) = wrk(:,:,:,1)
-           end if
+!!$           write(out,*) 'LEGACY CODE COMPATIBILITY: u,v,w <-> w,v,u'
+!!$           call flush(out)
+!!$           call MPI_RECV(wrk(1,1,1,1),count,MPI_REAL8,0,tag,MPI_COMM_TASK,mpi_status,mpi_err)
+!!$           if (n.le.3) then
+!!$              fields(:,:,:,4-n) = wrk(:,:,:,1)
+!!$           else
+!!$              fields(:,:,:,n) = wrk(:,:,:,1)
+!!$           end if
 
 !!$           write(out,'(''Received variable '',i3,'': '',i2)') n,mpi_err
 !!$           write(out,*) fields(1:10,1,1,n)
@@ -222,14 +222,13 @@ subroutine restart_write
   ! first FFT everything to real space
   wrk(:,:,:,1:3+nums_out) = fields(:,:,:,1:3+nums_out)
 
-
-!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  write(out,*) 'LEGACY CODE COMPATIBILITY: u,v,w <-> w,v,u'
-  call flush(out)
-  wrk(:,:,:,1) = fields(:,:,:,3)
-  wrk(:,:,:,2) = fields(:,:,:,2)
-  wrk(:,:,:,3) = fields(:,:,:,1)
-!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+!!$!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+!!$  write(out,*) 'LEGACY CODE COMPATIBILITY: u,v,w <-> w,v,u'
+!!$  call flush(out)
+!!$  wrk(:,:,:,1) = fields(:,:,:,3)
+!!$  wrk(:,:,:,2) = fields(:,:,:,2)
+!!$  wrk(:,:,:,3) = fields(:,:,:,1)
+!!$!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   do n = 1,3+nums_out
      call xFFT3d(-1,n)
   end do
@@ -338,14 +337,17 @@ subroutine restart_write_parallel
   if (int_scalars) nums_out = n_scalars
 
   ! first FFT everything to real space
-!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  write(out,*) 'LEGACY CODE COMPATIBILITY: uvw <-> wvu'
-  call flush(out)
-  wrk(:,:,:,1) = fields(:,:,:,3)
-  wrk(:,:,:,2) = fields(:,:,:,2)
-  wrk(:,:,:,3) = fields(:,:,:,1)
-!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  wrk(:,:,:,3:3+nums_out) = fields(:,:,:,3:3+nums_out)
+  wrk(:,:,:,1:3+nums_out) = fields(:,:,:,1:3+nums_out)
+
+
+!!$!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+!!$  write(out,*) 'LEGACY CODE COMPATIBILITY: uvw <-> wvu'
+!!$  call flush(out)
+!!$  wrk(:,:,:,1) = fields(:,:,:,3)
+!!$  wrk(:,:,:,2) = fields(:,:,:,2)
+!!$  wrk(:,:,:,3) = fields(:,:,:,1)
+!!$!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+!!$  wrk(:,:,:,3:3+nums_out) = fields(:,:,:,3:3+nums_out)
 
   do n = 1,3+nums_out
      call xFFT3d(-1,n)
@@ -401,7 +403,7 @@ subroutine restart_write_parallel
   write(out,*) '------------------------------------------------'
   write(out,*) 'Restart file written (par): '//trim(fname)
   write(out,"(' Velocities and ',i3,' scalars')") nums_out 
-  write(out,"('Restart file time = ',f15.10,i7)") time,itime
+  write(out,"(' Restart file time = ',f15.10,i7)") time,itime
   write(out,*) '------------------------------------------------'
   call flush(out)
 
@@ -443,7 +445,7 @@ subroutine restart_read_parallel
      stop
   end if
 
-  write(out,*) 'READING FROM THE FILE: ',trim(fname)
+  write(out,*) 'READING FROM THE FILE (parallel): ',trim(fname)
   call flush(out)
 
   ! ----------------------------------------------------------------------
@@ -541,13 +543,14 @@ subroutine restart_read_parallel
      ! rearrange it and put into the fields array.
 !     call MPI_FILE_READ_AT(fh, offset, sctmp8, count, MPI_REAL8, mpi_status, mpi_err)
      call MPI_FILE_READ_AT_ALL(fh, offset, sctmp8, count, MPI_REAL8, mpi_status, mpi_err)
-     if (n.le.3) then
-        write(out,*) "LEGACY CODE COMPATIBILITY: uvw <-> wvu"
-        call flush(out)
-        fields(1:nx,1:ny,1:nz,4-n) = sctmp8(1:nx,1:ny,1:nz)
-     else
+
+!!$     if (n.le.3) then
+!!$        write(out,*) "LEGACY CODE COMPATIBILITY: uvw <-> wvu"
+!!$        call flush(out)
+!!$        fields(1:nx,1:ny,1:nz,4-n) = sctmp8(1:nx,1:ny,1:nz)
+!!$     else
         fields(1:nx,1:ny,1:nz,n) = sctmp8(1:nx,1:ny,1:nz)
-     end if
+!!$     end if
 
   end do reading_fields
 
