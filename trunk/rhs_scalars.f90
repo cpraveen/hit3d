@@ -250,6 +250,112 @@ subroutine rhs_scalars
 
      end do not_phase_shifted_rhs
 
+     ! --------------------------------------------------
+     ! Add the reaction rates to the RHS     
+     ! --------------------------------------------------
+
+     reaction_rates: do n = 4, 3+n_scalars
+
+        if (scalar_type(n-3) .gt. 300) then
+
+!!$           ! putting phase shifted scalar in wrk(n1)
+!!$           do k = 1,nz
+!!$              do j = 1,ny
+!!$                 do i = 1,nx+1,2
+!!$                    wrk(i  ,j,k,n1) = fields(i  ,j,k,n) * wrk(i,j,k,0) - fields(i+1,j,k,n) * wrk(i+1,j,k,0)
+!!$                    wrk(i+1,j,k,n1) = fields(i+1,j,k,n) * wrk(i,j,k,0) + fields(i  ,j,k,n) * wrk(i+1,j,k,0)
+!!$                 end do
+!!$              end do
+!!$           end do
+!!$           ! transforming it to real space
+!!$           call xFFT3d(-1,n1)
+!!$           ! putting the phase-shifted reaction rate in wrk(n2)
+!!$           call scalar_reaction_rate(n1,n2)
+!!$           ! transforming to Fourier space
+!!$           call xFFT3d(1,n2)
+!!$           ! phase shifting back and adding a half of it to the RHS
+!!$           do k = 1,nz
+!!$              do j = 1,ny
+!!$                 do i = 1,nx+1,2
+!!$                    if (ialias(i,j,k) .le. 1) then
+!!$                       ! phase shifting back
+!!$                       r11 = wrk(i  ,j,k,n2) * wrk(i,j,k,0) + wrk(i+1,j,k,n2) * wrk(i+1,j,k,0)
+!!$                       r12 = wrk(i+1,j,k,n2) * wrk(i,j,k,0) - wrk(i  ,j,k,n2) * wrk(i+1,j,k,0)
+!!$                       ! adding 0.5*(the result) to the RHSs for the scalar
+!!$                       wrk(i  ,j,k,n) = wrk(i  ,j,k,n) + 0.5d0 * r11
+!!$                       wrk(i+1,j,k,n) = wrk(i+1,j,k,n) + 0.5d0 * r12
+!!$                    end if
+!!$                 end do
+!!$              end do
+!!$           end do
+!!$
+!!$           ! scond part: doing the same  thing with not-phase-shifted scalar
+!!$           ! putting it in wrk(n1)
+!!$           wrk(:,:,:,n1) = fields(:,:,:,n)
+!!$           ! transforming it to real space
+!!$           call xFFT3d(-1,n1)
+!!$           ! putting the phase-shifted reaction rate in wrk(n2)
+!!$           call scalar_reaction_rate(n1,n2)
+!!$           ! transforming to Fourier space
+!!$           call xFFT3d(1,n2)
+!!$           ! phase shifting back and adding a half of it to the RHS
+!!$           do k = 1,nz
+!!$              do j = 1,ny
+!!$                 do i = 1,nx+1,2
+!!$                    if (ialias(i,j,k) .le. 1) then
+!!$                       ! phase shifting back
+!!$                       r11 = wrk(i  ,j,k,n2) * wrk(i,j,k,0) + wrk(i+1,j,k,n2) * wrk(i+1,j,k,0)
+!!$                       r12 = wrk(i+1,j,k,n2) * wrk(i,j,k,0) - wrk(i  ,j,k,n2) * wrk(i+1,j,k,0)
+!!$                       ! adding 0.5*(the result) to the RHSs for the scalar
+!!$                       wrk(i  ,j,k,n) = wrk(i  ,j,k,n) + 0.5d0 * r11
+!!$                       wrk(i+1,j,k,n) = wrk(i+1,j,k,n) + 0.5d0 * r12
+!!$                    end if
+!!$                 end do
+!!$              end do
+!!$           end do
+
+           ! since the reaction rate is cubic, we need to apply some severe truncation.
+           
+           ! putting the scalar in wrk(n1)
+           wrk(:,:,:,n1) = fields(:,:,:,n)
+           ! truncating it so only  the modes with |k_i| < nx/4 remain
+           do k = 1,nz
+              do j = 1,ny
+                 do i = 1,nx+1,2
+                    if (abs(akx(i)).gt.nx/4 .or. abs(aky(k)).gt.nx/4 .or. abs(akz(j)).gt.nx/4) then
+                       wrk(i  ,j,k,n1) = zip
+                       wrk(i+1,j,k,n1) = zip
+                    end if
+                 end do
+              end do
+           end do
+
+           ! transforming it to real space
+           call xFFT3d(-1,n1)
+          
+           ! self-adjusting bistable reaction needs the mean value of the scalar
+           rtmp1 = fields(1,1,1,3+n)/nxyz_all
+           call MPI_BCAST(rtmp1, 1, MPI_REAL8, 0, MPI_COMM_TASK, mpi_err)
+
+           ! getting the reaction rate
+           wrk(:,:,:,n2) = reac_sc(n-3) * (one - wrk(:,:,:,n1)**2) * (wrk(:,:,:,n1) - rtmp1)
+
+           ! transforming it to Fourier space
+           call xFFT3d(1,n2)
+
+           ! adding to the RHS
+           wrk(:,:,:,n) = wrk(:,:,:,n) + wrk(:,:,:,n2)
+
+        else
+           write(out,*) "The scalar type has a reaction rate that is not supported yet:", scalar_type(n-3)
+           call flush(out)
+           call my_exit(-1)
+        end if
+     end do reaction_rates
+
+
+
+
   end if
 
   return
