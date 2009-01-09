@@ -95,7 +95,7 @@ program x_code
 !--------------------------------------------------------------------------------
      hydro: if (task.eq.'hydro') then
 
-        ! RHS for passive scalars (write)
+        ! RHS for passive scalars
         call rhs_scalars
 
         ! now the velocities in x-space are contained in wrk1...3
@@ -267,10 +267,10 @@ program x_code
      ITIME = ITIME-1
      if (task.eq.'hydro') call restart_write
 
-!  checking the writing restart in parallel
-     file_ext = 'xxxxxx'
-     last_dump = 0
-     if (task.eq.'hydro') call restart_write_parallel
+!!$!  checking the writing restart in parallel
+!!$     file_ext = 'xxxxxx'
+!!$     last_dump = 0
+!!$     if (task.eq.'hydro') call restart_write_parallel
 
      call my_exit(0)
      call m_openmpi_exit

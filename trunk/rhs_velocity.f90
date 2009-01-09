@@ -117,10 +117,6 @@ subroutine rhs_velocity
               ! inside the cube described by $| k_i | \leq  k_{max}$, $i=1,2,3$.
               ! The rest of the modes is purged
 
-!!$              if  (abs(akx(i)) .gt. t1(6) .or. &
-!!$                   abs(aky(k)) .gt. t1(6) .or. &
-!!$                   abs(akz(j)) .gt. t1(6)) then
-
               if (ialias(i,j,k) .gt. 0) then
                  ! setting the Fourier components to zero
                  wrk(i  ,j,k,1:3) = zip
@@ -182,9 +178,6 @@ subroutine rhs_velocity
      ! First, put into wrk arrays the convectove terms (that will be multiplyed by "i"
      ! later) and the factor that corresponds to the diffusion
 
-     ! in the same loop defining the array wrk0 which contains the sum of three
-     ! indicators: ( |akx| > nx/3 ), ( |aky| > nx/3 ), ( |akz| > nx/3 )
-
      ! Do not forget that in Fourier space the indicies are (ix, iz, iy)
      do k = 1,nz
         do j = 1,ny
@@ -209,9 +202,6 @@ subroutine rhs_velocity
 
      ! wrk(:,:,:,4) contains the Laplace operator in Fourier space.  To get the diffusion term
      ! we need to take wrk(:,:,:,4) and multiply it by the velocity
-
-     ! wrk(:,:,:,0) contains the sum of indicators, each of which is |ak*| > nx/3.  
-     ! We use that to perform our dealiasing.  dealias=1 is equivalent to wrk0 < 2.
 
      do k = 1,nz
         do j = 1,ny

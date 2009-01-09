@@ -1,6 +1,6 @@
 module m_timing
 
-  integer*8 :: cpu0,cpu1,dcpu
+  integer*8 :: cpu0, cpu1, cpu2, dcpu
   integer*4 :: cpu_sec, cpu_min, cpu_hrs, cpu_min_total
   integer*4 :: job_runlimit
 
