@@ -43,21 +43,21 @@ subroutine begin_restart
 !!$!  Checking the accuracy of the parallel read 
 !!$!  (reading parallel first, then serial and comparing)
 !!$!================================================================================
-!!$  if (task.eq.'hydro') then
-!!$
-!!$     call restart_read_parallel
-!!$
-!!$     allocate(zhopa(nx+2,ny,nz,3+n_scalars), stat=ierr)
-!!$     if (ierr.ne.0) stop 'cannot allocate zhopa'
-!!$     zhopa = zip
-!!$     zhopa = fields
-!!$
-!!$     call restart_read
-!!$
-!!$     print "(10e15.6)",maxval(abs(zhopa-fields)), fields(nx/2:nx/2+3,ny,nz,3), zhopa(nx/2:nx/2+3,ny,nz,3)
-!!$  end if
-!!$  call MPI_BARRIER(MPI_COMM_WORLD, mpi_err)
-!!$  stop 'checking the restart read'
+!  if (task.eq.'hydro') then
+!
+!     call restart_read_parallel
+!
+!     allocate(zhopa(nx+2,ny,nz,3+n_scalars), stat=ierr)
+!     if (ierr.ne.0) stop 'cannot allocate zhopa'
+!     zhopa = zip
+!     zhopa = fields
+!
+!     call restart_read
+!
+!     print "(10e15.6)",maxval(abs(zhopa-fields))
+!  end if
+!  call MPI_BARRIER(MPI_COMM_WORLD, mpi_err)
+! stop 'checking the restart read'
 !!$!================================================================================
 
   ! deciding whether we advance scalars or not

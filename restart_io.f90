@@ -21,14 +21,13 @@ subroutine restart_read
      stop
   end if
 
-  write(out,*) 'READING FROM THE FILE: ',trim(fname)
+  write(out,*) 'Reading from the file (seq): ',trim(fname)
   call flush(out)
 
   ! root process reads parameters from the file
   if (myid_world.eq.0) then
-!!     open(91,file=fname,form='binary')
      open(91,file=fname,form='unformatted',access='stream')
-     read(91) nx1, ny1, nz1, nums1, MST1, TIME, ST
+     read(91) nx1, ny1, nz1, nums1, MST1, TIME, DT
   end if
 
   call MPI_BCAST(nx1,  1,MPI_INTEGER4,0,MPI_COMM_WORLD,mpi_err)
@@ -37,6 +36,7 @@ subroutine restart_read
   call MPI_BCAST(nums1,1,MPI_INTEGER4,0,MPI_COMM_WORLD,mpi_err)
 
   call MPI_BCAST(TIME,1,MPI_REAL8,0,MPI_COMM_WORLD,mpi_err)
+  call MPI_BCAST(  DT,1,MPI_REAL8,0,MPI_COMM_WORLD,mpi_err)
 
   ! everyone checks of the parameters coinside with what's in the .in file
   if (nx.ne.nx1 .or. ny.ne.ny1 .or. nz_all.ne.nz1) then
@@ -104,17 +104,7 @@ subroutine restart_read
         do n = 1, 3 + nums_read
 
            ! first chunk belongs to the root
-
-           ! uncomment this when stop using the legacy codes that switch u,v,w into w,v,u
            read(91) (((fields(i,j,k,n),i=1,nx),j=1,ny),k=1,nz)
-
-!!$           if (n.le.3) then
-!!$              write(out,*) 'LEGACY CODE COMPATIBILITY: u,v,w <-> w,v,u'
-!!$              call flush(out)
-!!$              read(91) (((fields(i,j,k,4-n),i=1,nx),j=1,ny),k=1,nz)
-!!$           else
-!!$              read(91) (((fields(i,j,k,n),i=1,nx),j=1,ny),k=1,nz)
-!!$           end if
 
            ! the rest gets read and sent to the appropriate porcess
            do id_to = 1,numprocs-1
@@ -139,39 +129,11 @@ subroutine restart_read
         do n = 1, 3 + nums_read
 
            tag = (3+nums_read) * myid + n-1
-
-           ! uncomment this when stop using the legacy codes that switch u,v,w into w,v,u
            call MPI_RECV(fields(1,1,1,n),count,MPI_REAL8,0,tag,MPI_COMM_TASK,mpi_status,mpi_err)
-
-!!$           write(out,*) 'LEGACY CODE COMPATIBILITY: u,v,w <-> w,v,u'
-!!$           call flush(out)
-!!$           call MPI_RECV(wrk(1,1,1,1),count,MPI_REAL8,0,tag,MPI_COMM_TASK,mpi_status,mpi_err)
-!!$           if (n.le.3) then
-!!$              fields(:,:,:,4-n) = wrk(:,:,:,1)
-!!$           else
-!!$              fields(:,:,:,n) = wrk(:,:,:,1)
-!!$           end if
-
-!!$           write(out,'(''Received variable '',i3,'': '',i2)') n,mpi_err
-!!$           write(out,*) fields(1:10,1,1,n)
-!!$           call flush(out)
 
         end do
 
      end if
-
-!!$     write(out,*) "NOT doing FFT of the read variables yet."
-!!$     call flush(out)
-
-!----------------------------------------------------------------------
-!  FFT to the complex space and putting variables in fields array
-!----------------------------------------------------------------------
-     do n = 1,3+nums_read
-        wrk(:,:,:,1) = fields(:,:,:,n)
-        call xFFT3d(1,1)
-        fields(:,:,:,n) = wrk(:,:,:,1)
-     end do
-
 
   end if hydro_only
 
@@ -229,9 +191,9 @@ subroutine restart_write
 !!$  wrk(:,:,:,2) = fields(:,:,:,2)
 !!$  wrk(:,:,:,3) = fields(:,:,:,1)
 !!$!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  do n = 1,3+nums_out
-     call xFFT3d(-1,n)
-  end do
+!  do n = 1,3+nums_out
+!     call xFFT3d(-1,n)
+!  end do
 
   ! --------------- writing process ------------------
 
@@ -264,7 +226,7 @@ subroutine restart_write
 
      ! first write the parameters
      ST = zip
-     write(91) int(nx,4),int(ny,4),int(nz*numprocs,4),int(nums_out,4),int(MST,4),TIME,ST
+     write(91) int(nx,4),int(ny,4),int(nz*numprocs,4),int(nums_out,4),int(MST,4),TIME,DT
 
      ! then write the variables, one by one
      do n = 1,3+nums_out
@@ -290,13 +252,13 @@ subroutine restart_write
 
   write(out,*) '------------------------------------------------'
   write(out,*) 'Restart file written (seq): '//trim(fname)
-  write(out,"('Velocities and ',i3,' scalars')") nums_out 
-  write(out,'(''Restart file time = '',f15.10,i7)') time,itime
+  write(out,"(' Velocities and ',i3,' scalars')") nums_out 
+  write(out,"(' Restart file time = ',f15.10,i7)") time,itime
   write(out,*) '------------------------------------------------'
   call flush(out)
 
 
-
+  ! setting the variable last_dump to current timestep number 
   last_dump = ITIME
 
   return
@@ -349,9 +311,9 @@ subroutine restart_write_parallel
 !!$!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 !!$  wrk(:,:,:,3:3+nums_out) = fields(:,:,:,3:3+nums_out)
 
-  do n = 1,3+nums_out
-     call xFFT3d(-1,n)
-  end do
+!  do n = 1,3+nums_out
+!     call xFFT3d(-1,n)
+!  end do
 
   ! --------------- writing process ------------------
 
@@ -377,7 +339,7 @@ subroutine restart_write_parallel
      call MPI_FILE_WRITE(fh, nums1, count, MPI_INTEGER4, mpi_status, mpi_err)
      call MPI_FILE_WRITE(fh,  MST1, count, MPI_INTEGER4, mpi_status, mpi_err)
      call MPI_FILE_WRITE(fh,  TIME, count, MPI_REAL8, mpi_status, mpi_err)
-     call MPI_FILE_WRITE(fh,    ST, count, MPI_REAL8, mpi_status, mpi_err)
+     call MPI_FILE_WRITE(fh,    DT, count, MPI_REAL8, mpi_status, mpi_err)
   end if
 
   ! all nodes write their stuff into the file
@@ -445,7 +407,7 @@ subroutine restart_read_parallel
      stop
   end if
 
-  write(out,*) 'READING FROM THE FILE (parallel): ',trim(fname)
+  write(out,*) 'Reading from the file (par): ',trim(fname)
   call flush(out)
 
   ! ----------------------------------------------------------------------
@@ -458,7 +420,7 @@ subroutine restart_read_parallel
   if (myid.eq.0) then
 !!     open(91,file=fname,form='binary')
      open(91,file=fname,form='unformatted',access='stream')
-     read(91) nx1, ny1, nz1, nums1, MST1, TIME, ST
+     read(91) nx1, ny1, nz1, nums1, MST1, TIME, DT
      close(91)
   end if
 
@@ -468,6 +430,7 @@ subroutine restart_read_parallel
   call MPI_BCAST(nums1,1,MPI_INTEGER4,0,MPI_COMM_TASK,mpi_err)
 
   call MPI_BCAST(TIME,1,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
+  call MPI_BCAST(  DT,1,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
 
   ! everyone checks of the parameters coinside with what's in the .in file
   if (nx.ne.nx1 .or. ny.ne.ny1 .or. nz_all.ne.nz1) then
@@ -544,13 +507,7 @@ subroutine restart_read_parallel
 !     call MPI_FILE_READ_AT(fh, offset, sctmp8, count, MPI_REAL8, mpi_status, mpi_err)
      call MPI_FILE_READ_AT_ALL(fh, offset, sctmp8, count, MPI_REAL8, mpi_status, mpi_err)
 
-!!$     if (n.le.3) then
-!!$        write(out,*) "LEGACY CODE COMPATIBILITY: uvw <-> wvu"
-!!$        call flush(out)
-!!$        fields(1:nx,1:ny,1:nz,4-n) = sctmp8(1:nx,1:ny,1:nz)
-!!$     else
-        fields(1:nx,1:ny,1:nz,n) = sctmp8(1:nx,1:ny,1:nz)
-!!$     end if
+     fields(1:nx,1:ny,1:nz,n) = sctmp8(1:nx,1:ny,1:nz)
 
   end do reading_fields
 
@@ -561,11 +518,11 @@ subroutine restart_read_parallel
 !----------------------------------------------------------------------
 !  FFT to the complex space and putting variables in fields array
 !----------------------------------------------------------------------
-  fft_fields: do n = 1,3+nums_read
-     wrk(:,:,:,1) = fields(:,:,:,n)
-     call xFFT3d(1,1)
-     fields(:,:,:,n) = wrk(:,:,:,1)
-  end do fft_fields
+!  fft_fields: do n = 1,3+nums_read
+!     wrk(:,:,:,1) = fields(:,:,:,n)
+!     call xFFT3d(1,1)
+!     fields(:,:,:,n) = wrk(:,:,:,1)
+!  end do fft_fields
 
   write(out,*) "Restart file successfully read."
   call flush(out)

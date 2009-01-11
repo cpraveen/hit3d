@@ -136,20 +136,16 @@ program x_code
            rhs_old(:,:,:,1:3) = wrk(:,:,:,1:3)
         end if
 
-        ! dealiasing
-        ! call dealias_all
-
         ! solve for pressure and update velocities so they are incompressible
         call pressure
-
 
         ! advance the time
         TIME = TIME + DT
 
+        ! write the restart file if it's the time
         if (mod(itime,IPRINT2).eq.0) call restart_write
 
-
-        ! change the timestep
+        ! change the timestep in case we're running with variable timestep
         if (variable_dt) call my_dt
 
         ! CPU usage statistics
@@ -164,8 +160,8 @@ program x_code
            call flush(out)
         end if
 
-        ! send the velocities to the "stats" part of the code for statistics
         if (mod(itime,iprint1).eq.0 .or. mod(itime,iwrite4).eq.0) then
+           ! send the velocities to the "stats" part of the code for statistics
            if (task_split) call fields_to_stats
            ! checking if we need to stop the calculations due to simulation time
            if (TIME.gt.TMAX) call my_exit(1)
@@ -208,7 +204,10 @@ program x_code
 
 !--------------------------------------------------------------------------------
 !                             PARTICLE PARTS
-! NOTE: This is not enabled to work when task_split.  Need to return to it later.
+!  NOTE: This is not enabled to work when not task_split.  
+!  Need to return to it later.
+!  Currently the particles can be calculated only if we split the tasks due to
+!  requirements on the wrk array sizes in the particle interpolation routines.
 !--------------------------------------------------------------------------------
      particles: if (task.eq.'parts') then
         
@@ -238,8 +237,8 @@ program x_code
 
 
      ! every 10 iterations checking 
-     ! - for the run time: are we getting close to the job_runlimit?
-     ! - for the user termination: is there a file "stop" in directory?
+     ! 1) for the run time: are we getting close to the job_runlimit?
+     ! 2) for the user termination: is there a file "stop" in directory?
      if (mod(ITIME,10).eq.0) then
 
         ! synchronize all processors, hard
@@ -261,17 +260,11 @@ program x_code
 !================================================================================
 
 !--------------------------------------------------------------------------------
-!  In a (very unlikely) case when we've gone to ITMAX, dump the restart file
+!  In a case when we've gone to ITMAX, write the restart file
 !--------------------------------------------------------------------------------
 
      ITIME = ITIME-1
-     if (task.eq.'hydro') call restart_write
-
-!!$!  checking the writing restart in parallel
-!!$     file_ext = 'xxxxxx'
-!!$     last_dump = 0
-!!$     if (task.eq.'hydro') call restart_write_parallel
-
+     if (task.eq.'hydro') call restart_write_parallel
      call my_exit(0)
      call m_openmpi_exit
 
