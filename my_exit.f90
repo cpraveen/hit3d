@@ -57,7 +57,7 @@ subroutine my_exit(reason)
 
 
   if (reason.ge.0) then
-     if (task.eq.'hydro') call restart_write
+     if (task.eq.'hydro') call restart_write_parallel
      if (task.eq.'parts') call particles_restart_write_binary
   end if
 
