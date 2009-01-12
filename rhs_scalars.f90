@@ -334,7 +334,7 @@ subroutine rhs_scalars
            call xFFT3d(-1,n1)
           
            ! self-adjusting bistable reaction needs the mean value of the scalar
-           rtmp1 = fields(1,1,1,3+n)/nxyz_all
+           rtmp1 = fields(1,1,1,n)/nxyz_all
            call MPI_BCAST(rtmp1, 1, MPI_REAL8, 0, MPI_COMM_TASK, mpi_err)
 
            ! getting the reaction rate
