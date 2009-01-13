@@ -277,7 +277,7 @@ subroutine init_scalar_space(n_scalar)
   if (ic_type.eq.11) then
 
      ! how much to smear out the interface
-     h = 8.*dz  
+     h = max(8.*dz, PI/8.d0)
 
      ! creating array of scalar
      do k = 1,nz
