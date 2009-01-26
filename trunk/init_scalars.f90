@@ -2,6 +2,7 @@ subroutine init_scalars
 
   use m_parameters
   use m_io
+  use m_fields
 
   implicit none
 
@@ -15,8 +16,13 @@ subroutine init_scalars
 
      sc_type = scalar_type(n_scalar)
      ic_type = sc_type - (sc_type/100)*100
+     
+     if (ic_type.eq.0) then   
+        ! gradient source - no need for initial conditions
+        ! thus making the initial scalar field zero
+        fields(:,:,:,n_scalar+3) = zip
 
-     if (ic_type.lt.10) then
+     elseif (ic_type.lt.10) then
 
         call init_scalar_spectrum(n_scalar)
 

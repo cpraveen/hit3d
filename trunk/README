@@ -9,6 +9,9 @@ In the code, the scalars are identified by "scalar type".
 
 Scalars of type < 100 are non-reactive.
 
+Special scalar type 0 is the passive scalar with uniform gradient source.
+The gradient is 1 and going in the x-direction.
+
 Scalars of type > 100 have a reaction rate of type R(T), where T is
 the scalar.  For reactive scalars, the first digit of scalar type
 (hundreds) determines the particular kind of reaction rate:
