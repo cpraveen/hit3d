@@ -314,45 +314,55 @@ subroutine rhs_scalars
 !!$              end do
 !!$           end do
 
-           ! since the reaction rate is cubic, we need to apply some severe truncation.
-           
-           ! putting the scalar in wrk(n1)
-           wrk(:,:,:,n1) = fields(:,:,:,n)
-           ! truncating it so only  the modes with |k_i| < nx/4 remain
-           do k = 1,nz
-              do j = 1,ny
-                 do i = 1,nx+1,2
-                    if (abs(akx(i)).gt.nx/4 .or. abs(aky(k)).gt.nx/4 .or. abs(akz(j)).gt.nx/4) then
-                       wrk(i  ,j,k,n1) = zip
-                       wrk(i+1,j,k,n1) = zip
-                    end if
+           if (scalar_type(n-3) .eq. 311) then
+
+              ! since the reaction rate is cubic, we need to apply some severe truncation.
+
+              ! putting the scalar in wrk(n1)
+              wrk(:,:,:,n1) = fields(:,:,:,n)
+              ! truncating it so only  the modes with |k_i| < nx/4 remain
+              do k = 1,nz
+                 do j = 1,ny
+                    do i = 1,nx+1,2
+                       if (abs(akx(i)).gt.nx/4 .or. abs(aky(k)).gt.nx/4 .or. abs(akz(j)).gt.nx/4) then
+                          wrk(i  ,j,k,n1) = zip
+                          wrk(i+1,j,k,n1) = zip
+                       end if
+                    end do
                  end do
               end do
-           end do
 
-           ! transforming it to real space
-           call xFFT3d(-1,n1)
-          
-           ! self-adjusting bistable reaction needs the mean value of the scalar
-           rtmp1 = fields(1,1,1,n)/nxyz_all
-           call MPI_BCAST(rtmp1, 1, MPI_REAL8, 0, MPI_COMM_TASK, mpi_err)
+              ! transforming it to real space
+              call xFFT3d(-1,n1)
 
-           ! getting the reaction rate
-           wrk(:,:,:,n2) = reac_sc(n-3) * (one - wrk(:,:,:,n1)**2) * (wrk(:,:,:,n1) - rtmp1)
+              ! self-adjusting bistable reaction needs the mean value of the scalar
+              rtmp1 = fields(1,1,1,n)/nxyz_all
+              call MPI_BCAST(rtmp1, 1, MPI_REAL8, 0, MPI_COMM_TASK, mpi_err)
 
-           ! transforming it to Fourier space
-           call xFFT3d(1,n2)
+              ! getting the reaction rate
+              wrk(:,:,:,n2) = reac_sc(n-3) * (one - wrk(:,:,:,n1)**2) * (wrk(:,:,:,n1) - rtmp1)
 
-           ! adding to the RHS
-           wrk(:,:,:,n) = wrk(:,:,:,n) + wrk(:,:,:,n2)
+              ! transforming it to Fourier space
+              call xFFT3d(1,n2)
 
-        else
-           write(out,*) "The scalar type has a reaction rate that is not supported yet:", scalar_type(n-3)
-           call flush(out)
-           call my_exit(-1)
+              ! adding to the RHS
+              wrk(:,:,:,n) = wrk(:,:,:,n) + wrk(:,:,:,n2)
+
+           else
+              write(out,*) "The scalar type has a reaction rate that is not supported yet:", scalar_type(n-3)
+              call flush(out)
+              call my_exit(-1)
+           end if
         end if
      end do reaction_rates
 
+
+     ! special case - passive scalar with the uniform fgradient as a source
+     ! adding the source term - the first component of velocity, because we assume
+     ! that the uniform gradient has slope 1 and direction in the x-direction
+     gradient_source: do n = 1, n_scalars
+        if (scalar_type(n) .eq. 0) wrk(:,:,:,n+3) = wrk(:,:,:,n+3) - fields(:,:,:,1)
+     end do gradient_source
 
 
 
