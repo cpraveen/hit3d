@@ -30,9 +30,9 @@ subroutine io_write_4
            wmag2 = akx(i)**2 + aky(k)**2 + akz(j)**2
 
            if (wmag2 .gt. rkmax2) then
-              wrk(i,j,k,1:n_out) = fields(i,j,k,1:n_out)
-           else
               wrk(i,j,k,1:n_out) = zip
+           else
+              wrk(i,j,k,1:n_out) = fields(i,j,k,1:n_out)
            end if
 
         end do
