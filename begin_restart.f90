@@ -21,6 +21,19 @@ subroutine begin_restart
   ! reading the restart file
   if (task.eq.'hydro') call restart_read_parallel
 
+  ! redefining the timestep.
+  ! the code uses Adams-Bashforth time-stepping scheme,
+  ! which is 2nd order accurate in time.  After the restart, thefirst
+  ! timestep is done using a simple Euler scheme (1st order in time).
+  ! To help maintain any sensible accuracy, we need to start with
+  ! the timestep which is smaller than the last.
+  if (variable_dt) then
+     dt = half * dt
+     call MPI_BCAST(dt,1,MPI_REAL8,0,MPI_COMM_WORLD,mpi_err)
+     write(out,*) "Making the timestep smaller: ",dt
+     call flush(out)
+  end if
+
 
 !!$!================================================================================
 !!$!  Checking the parallel read speed (reading 100 times)
@@ -57,7 +70,7 @@ subroutine begin_restart
 !     print "(10e15.6)",maxval(abs(zhopa-fields))
 !  end if
 !  call MPI_BARRIER(MPI_COMM_WORLD, mpi_err)
-! stop 'checking the restart read'
+  ! stop 'checking the restart read'
 !!$!================================================================================
 
   ! deciding whether we advance scalars or not

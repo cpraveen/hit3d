@@ -2,7 +2,7 @@
 ! M_PARAMETERS - module for all parameters in the calculation: 
 !                such as array dimensions, reynolds numbers, switches/flags etc.
 !
-! Time-stamp: <2008-12-23 16:19:00 (chumakov)>
+! Time-stamp: <2009-02-11 15:25:45 (chumakov)>
 ! Time-stamp: <2008-11-20 17:27:59 MST (vladimirova)>
 !================================================================================
 
@@ -27,7 +27,7 @@ module m_parameters
 
   integer :: ITIME, ITMIN, ITMAX, IPRINT1, IPRINT2, IWRITE4
 
-  real*8  :: TMAX, TRESCALE, TSCALAR, RE, nu, dt, udt
+  real*8  :: TMAX, TRESCALE, TSCALAR, RE, nu, dt
 
   integer :: flow_type
 
@@ -274,7 +274,6 @@ contains
        variable_dt = .true.
     end if
 
-    udt = 1.0d0/DT
     read(in,*)
     write(out,"(70('-'))")
     call flush(out)
