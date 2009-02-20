@@ -21,6 +21,9 @@ subroutine begin_restart
   ! reading the restart file
   if (task.eq.'hydro') call restart_read_parallel
 
+  ! broadcasting the current simulation time from the restart file
+  call MPI_BCAST(time,1,MPI_REAL8,0,MPI_COMM_WORLD,mpi_err)
+
   ! redefining the timestep.
   ! the code uses Adams-Bashforth time-stepping scheme,
   ! which is 2nd order accurate in time.  After the restart, thefirst
@@ -70,7 +73,7 @@ subroutine begin_restart
 !     print "(10e15.6)",maxval(abs(zhopa-fields))
 !  end if
 !  call MPI_BARRIER(MPI_COMM_WORLD, mpi_err)
-  ! stop 'checking the restart read'
+!  stop 'checking the restart read'
 !!$!================================================================================
 
   ! deciding whether we advance scalars or not

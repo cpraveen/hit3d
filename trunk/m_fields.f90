@@ -63,6 +63,9 @@ contains
     integer :: n_field, n_proc, k, ratio, n_scalars_bcast
 
     ! broadcasting time from the hydro root process to the whole world
+!!$    write(out,*) "Broadcasting fields to stats part."
+!!$    call flush(out)
+
 
     ! first send it to the root process of the stats part
     count = 1
@@ -70,15 +73,29 @@ contains
     if (iammaster) then
        if (task.eq.'hydro') call MPI_SEND(TIME,count,MPI_REAL8,id_root_stats,tag,MPI_COMM_WORLD,mpi_err)
        if (task.eq.'stats') call MPI_RECV(TIME,count,MPI_REAL8,id_root_hydro,tag,MPI_COMM_WORLD,mpi_status,mpi_err)
+!!$       write(out,*) "Exchanged information between master processors."
+!!$       call flush(out)
     end if
     ! then broadcast it over the "stats" communicator
-    if (task.eq.'stats') call MPI_BCAST(TIME,count,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
+    if (task.eq.'stats') then
+       call MPI_BCAST(TIME,count,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
+       ! checking if we need to start advancing scalars
+       if (.not. int_scalars .and. TIME .gt. TSCALAR) then
+          int_scalars = .true.
+          write(out,*) "Starting to move the scalars."
+          call flush(out)
+       end if
+    end if
+!!$    write(out,*) "Broadcasted to slave processors."
+!!$    call flush(out)
 
     ! figuring out how many scalars to broadcast:
     ! 0     if we do not move scalars
     ! all   if we move scalars
     n_scalars_bcast = 0
     if (int_scalars) n_scalars_bcast = n_scalars
+!!$    write(out,*) "Number of scalars to broadcast:", n_scalars_bcast
+!!$    call flush(out)
 
 
     if (numprocs_hydro .ge. numprocs_stats) then
@@ -99,8 +116,15 @@ contains
              id_to = numprocs_hydro + floor(real(myid_world) / real(ratio))
              tag = myid_world*(3+n_scalars_bcast) + n_field-1
 
+!!$             write(out,*) "Sending :", n_field, count, id_to, tag
+!!$             call flush(out)
+
              call MPI_ISEND(fields(1,1,1,n_field),count,MPI_REAL8,id_to,tag,MPI_COMM_WORLD,mpi_request,mpi_err)
              call MPI_WAIT(mpi_request,mpi_status,mpi_err)
+
+!!$             write(out,*) "Sent."
+!!$             call flush(out)
+
           end do
        case ('stats')
 
@@ -112,9 +136,15 @@ contains
              do n_field = 1,3+n_scalars_bcast
                 tag = id_from*(3+n_scalars_bcast) + n_field-1
 
+!!$                write(out,*) "Receiving :", n_field, count, id_from, tag
+!!$                call flush(out)
+
                 call MPI_IRECV(fields(1,1,k,n_field),count,MPI_REAL8,&
                      id_from,tag,MPI_COMM_WORLD,mpi_request,mpi_err)
                 call MPI_WAIT(mpi_request,mpi_status,mpi_err)
+
+!!$                write(out,*) "Received."
+!!$                call flush(out)
 
              end do
           end do
@@ -238,13 +268,13 @@ contains
              count = (nx+2)*ny*nz
              id_to = id_root_parts + floor(real(myid_world) / real(ratio))
              tag = myid_world*(3+n_scalars_bcast) + n_field-1
-             
+
              ! if the paricles are advected by fully resolved velocity
              ! ( that is, particles_filter_size=0) then send the fully resolved
              ! velocity to the "parts" task
-             !   Else, if the particles are advected by locally averaged velofity, send
-             !   the velocities in the Fourier form.  They will be locally averaged and
-             !   processed by the "parts" part of the code
+!   Else, if the particles are advected by locally averaged velofity, send
+!   the velocities in the Fourier form.  They will be locally averaged and
+!   processed by the "parts" part of the code
              if (particles_filter_size .le. 0.d0) then
                 call MPI_ISEND(wrk(1,1,1,n_field),count,MPI_REAL8,id_to,tag,MPI_COMM_WORLD,mpi_request,mpi_err)
              else

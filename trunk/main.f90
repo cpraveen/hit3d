@@ -161,6 +161,7 @@ program x_code
         end if
 
         if (mod(itime,iprint1).eq.0 .or. mod(itime,iwrite4).eq.0) then
+
            ! send the velocities to the "stats" part of the code for statistics
            if (task_split) call fields_to_stats
            ! checking if we need to stop the calculations due to simulation time
@@ -182,22 +183,16 @@ program x_code
      stats: if (task.eq.'stats' .or. .not.task_split) then
 
         if (mod(itime,iprint1).eq.0 .or. mod(itime,iwrite4).eq.0) then
+           ! if this is a separate set of processors, then...
+           stats_task_split: if (task_split) then
+              ! checking if we need to stop the calculations due to simulation time
+              if (TIME.gt.TMAX) call my_exit(1)
+           end if stats_task_split
+
+           ! these are executed regardless of the processor configuration
            if (task_split) call fields_to_stats
            if (mod(itime,iprint1).eq.0) call stat_main
            if (mod(itime,iwrite4).eq.0) call io_write_4
-
-           ! if this is a separate set of processors, then...
-           stats_task_split: if (task_split) then
-
-              ! checking if we need to stop the calculations due to simulation time
-              if (TIME.gt.TMAX) call my_exit(1)
-              ! checking if we need to start advancing scalars
-              if (.not. int_scalars .and. time .gt. TSCALAR) then
-                 int_scalars = .true.
-                 write(out,*) "Starting to move the scalars."
-                 call flush(out)
-              end if
-           end if stats_task_split
 
         end if
      end if stats
