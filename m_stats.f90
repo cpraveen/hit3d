@@ -147,7 +147,7 @@ contains
        inquire(file='stat1.gp', exist=there, opened=there2)
        if (.not.there) then
           open(69,file='stat1.gp',form='formatted')
-          write(69,*) '# 1.itime 2.time 3.energy 4.diss 5.eta 6.enstrophy 7.R_lambda'
+          write(69,*) '# 1.itime 2.time         3.energy       4.diss         5.eta          6.enstrophy    7.R_lambda'
        end if
        if(there.and..not.there2) then
           open(69,file='stat1.gp',position='append')

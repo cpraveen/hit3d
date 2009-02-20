@@ -357,7 +357,7 @@ subroutine rhs_scalars
      end do reaction_rates
 
 
-     ! special case - passive scalar with the uniform fgradient as a source
+     ! special case - passive scalar with the uniform gradient as a source
      ! adding the source term - the first component of velocity, because we assume
      ! that the uniform gradient has slope 1 and direction in the x-direction
      gradient_source: do n = 1, n_scalars
