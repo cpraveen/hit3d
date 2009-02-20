@@ -470,12 +470,10 @@ subroutine restart_read_parallel
      call flush(out)
      nums_read = nums1
 
-!!$       ! initializing the added scalars
-!!$       if (int_scalars) then
-!!$          do n=nums1+1,n_scalars
-!!$             call ranfldsc(ms1(n),wm0sc1(n),ISCTYPE(n),esceng1(n),n)
-!!$          end do
-!!$       end if
+     ! initializing the added scalars
+     do n=nums1+1,n_scalars
+        call init_scalar(n)
+     end do
 
   else
 
