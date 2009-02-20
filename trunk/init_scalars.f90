@@ -23,10 +23,14 @@ subroutine init_scalars
         fields(:,:,:,n_scalar+3) = zip
 
      elseif (ic_type.lt.10) then
-
+        ! if the last two digits of the scalar type are less than 10,
+        ! the scalar initial conditions are generated based on the
+        ! particular spectrum of the scalar
         call init_scalar_spectrum(n_scalar)
 
      else
+        ! if the last two digits are bigger than 10, the scalar is generated
+        ! in physical space and then transformed in the Fourier space
 
         call init_scalar_space(n_scalar)
 
@@ -41,6 +45,8 @@ subroutine init_scalars
 
 end subroutine init_scalars
 
+!================================================================================
+!================================================================================
 !================================================================================
 subroutine init_scalar_spectrum(n_scalar)
 !================================================================================
@@ -258,6 +264,9 @@ subroutine init_scalar_spectrum(n_scalar)
 end subroutine init_scalar_spectrum
 
 !================================================================================
+!================================================================================
+!================================================================================
+!================================================================================
 subroutine init_scalar_space(n_scalar)
 !================================================================================
 
@@ -280,7 +289,9 @@ subroutine init_scalar_space(n_scalar)
   ic_type = sc_type - (sc_type/100)*100
 
 
-  if (ic_type.eq.11) then
+  select case (ic_type)
+
+  case(11) 
 
      ! how much to smear out the interface
      h = max(8.*dz, PI/8.d0)
@@ -298,11 +309,11 @@ subroutine init_scalar_space(n_scalar)
      ! putting it into the scalar array
      fields(:,:,:, 3+n_scalar) = wrk(:,:,:,0)
 
-  else
+  case default
      write(out,*) "INIT_SCALARS: UNEXPECTED SCALAR TYPE: ", scalar_type(n_scalar)
      call flush(out)
      stop
-  end if
+  end select
 
   return
 
