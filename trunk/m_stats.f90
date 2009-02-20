@@ -83,7 +83,7 @@ contains
     end if
 
     return
-9000 format('ITIME=',i7,' TIME=',e15.7,' Stat file is written.')
+9000 format('ITIME=',i7,' TIME=',e15.7,' Stat files are written.')
   end subroutine stat_main
 
 
@@ -160,7 +160,7 @@ contains
        inquire(file='stat2.gp', exist=there, opened=there2)
        if (.not.there) then
           open(70,file='stat2.gp',form='formatted')
-          write(70,'(A)') '# 1.itime 2.time          3.int LS       4. lambda      5.R_lambda1    6.tau_e     7.etakmax'
+          write(70,'(A)') '# 1.itime  2.time         3.int LS       4. lambda      5.R_lambda1    6.tau_e        7.etakmax'
        end if
        if(there.and..not.there2) then
           open(70,file='stat2.gp',position='append')
