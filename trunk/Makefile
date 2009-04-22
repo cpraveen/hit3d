@@ -50,6 +50,7 @@ MODULES = m_openmpi.o m_io.o\
 	m_force.o\
 	m_timing.o\
 	m_rand_knuth.o\
+	m_les.o\
 	RANDu.o
 
 OBJ     = main.o\

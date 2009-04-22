@@ -38,9 +38,9 @@ INPUT FILE FOR THE SPECTRAL CODE WITH SCALARS   (example for v.1.0.0)
 0.1		time_p, when to release the particles into the flow
 0.3		particle_filter_size, in case we average the velocity
 ----------------------------------------------------------------------
-0               iles, the LES mode (defunct)
+0               les_model, the LES model (0=none, see the README.txt)
 ----------------------------------------------------------------------
-1		nums, # of passive scalars. if > 0, read the following 
+0		nums, # of passive scalars. if > 0, read the following 
 ----------------------------------------------------------------------
 ## scalars: type, Sc, infrared exp, peak wavenumber (see below)
 1      1.0     4.0    2.

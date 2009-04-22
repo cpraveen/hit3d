@@ -7,16 +7,28 @@ subroutine rhs_scalars
   use m_work
   use x_fftw
   use m_timing
+  use m_les
 
   implicit none
 
   integer :: i, j, k, n, n1, n2, nv
   real*8  :: rtmp1, rtmp2, wnum2, r11, r12, r21, r22, r31, r32
 
+!!$  write(out,*) "in rhs_scalars"; call flush(out)
+  ! calculate turbulent viscosity, if any
+  if (les) call les_get_turb_visc
+!!$  write(out,*) "in rhs_scalars again"; call flush(out)
+
+
   ! If we're not advancing scalars, put the real-space velocities 
   ! in wrk1...3 and return
   ! same is done if dealias=0, that is, we use 2/3 rule.
-  if (.not.int_scalars) then
+  ! if dealias=1 (phase shifts) then this is done later in the subroutine
+
+  ! also if doing LES and n_les (the # of les-related auxilary scalars) is
+  ! greater than 0, then we need to transport these LES-related scalars,
+  ! even if n_scalars=0.
+  if (.not.int_scalars .and. n_les .eq. 0) then
      ! converting velocities to the real space
      wrk(:,:,:,1:3) = fields(:,:,:,1:3)
      do n = 1,3
@@ -41,7 +53,10 @@ subroutine rhs_scalars
 
      ! Trying to keep the velocities in wrk1:3 intact because they
      ! are needed later 
-     do n = 1, n_scalars
+     do n = 1, n_scalars + n_les
+
+!!$        write(out,*) "calculating RHS for scalar #",n
+!!$        call flush(out)
 
         wrk(:,:,:,0) = fields(:,:,:,3+n)
         call xFFT3d(-1,0)
@@ -51,6 +66,9 @@ subroutine rhs_scalars
            wrk(:,:,:,n+2+i) = wrk(:,:,:,0) * wrk(:,:,:,i)
            call xFFT3d(1,n+2+i)
         end do
+
+!!$        write(out,*) "  got the products",n
+!!$        call flush(out)
 
         ! Assembling the RHS in wrk(:,:,:,3+n)
         do k = 1,nz
@@ -88,10 +106,13 @@ subroutine rhs_scalars
            end do
         end do
 
-        ! Now adding the reaction part
-        if (scalar_type(n).ge.100) then
-           call add_reaction(n)
-           call dealias_rhs(3+n)
+        ! Now adding the reaction part (for scalars only, not for LES-related quantities
+        ! that are formally scalars with indicies n_scalars+1...n_scalars+n_les )
+        if (n .le. n_scalars) then
+           if (scalar_type(n).ge.100) then
+              call add_reaction(n)
+              call dealias_rhs(3+n)
+           end if
         end if
 
      end do
@@ -106,7 +127,7 @@ subroutine rhs_scalars
 !  end we must put sin/cos factors in wrk0 and u.v.w in real space in wrk1...3.
 !  They are going to be used again in rhs_velocity later.
 !--------------------------------------------------------------------------------
-  if (dealias.eq.1) then
+  phase_shifting_dealiasing: if (dealias.eq.1) then
 
      ! define the sin/cos factors that are used in phase shifting.
      ! computing sines and cosines for the phase shift of dx/2,dy/2,dz/2 
@@ -126,7 +147,7 @@ subroutine rhs_scalars
      ! primary work arrays here.
 
      ! First, get phase shifted velocities and scalars
-     do n = 1, 3+n_scalars
+     do n = 1, 3 + n_scalars + n_les
         ! phase-shifting the quantity
         do k = 1,nz
            do j = 1,ny
@@ -140,11 +161,12 @@ subroutine rhs_scalars
         call xFFT3d(-1,n)
      end do
 
-     ! now we have two vacant arrays: n_scalars+4 and n_scalars+5.  Work in them
-     n1 = n_scalars+4; n2 = n_scalars+5;
+     ! now we have two vacant arrays: n_scalars+n_les+4 and n_scalars+n_les+5.  Work in them
+     n1 = n_scalars + n_les + 4 
+     n2 = n_scalars + n_les + 5
 
      ! do one scalar at a time
-     phase_shifted_rhs: do n = 4, 3+n_scalars
+     phase_shifted_rhs: do n = 4, 3 + n_scalars + n_les
 
         ! getting all three products of phase-shifted scalar and phase-shifted velocities
         ! using three work arrays: n, n1 and n2
@@ -184,11 +206,12 @@ subroutine rhs_scalars
 
      end do phase_shifted_rhs
 
-     ! at this moment wrk4...3+n_scalars contain the half of the convective term, which was
+     ! at this moment wrk4...3+n_scalars+n_les contain the half of the convective term, which was
      ! obtained from the phase shifted quantities.  Now we need to add the other half of the
      ! convective term (the one that is obtained by multiplication of no-phase-shifted stuff)
 
      ! first get the velocities into the real space and put them in wrk1...3
+     ! this should remain in there untouched, to be used in rhs_velocity later
      do n = 1,3
         wrk(:,:,:,n) = fields(:,:,:,n)
         call xFFT3d(-1,n)
@@ -197,28 +220,11 @@ subroutine rhs_scalars
      ! now do scalars one at a time since we don't have enough storage to do them 
      ! all at once
 
-     not_phase_shifted_rhs: do n = 4, 3+n_scalars
+     not_phase_shifted_rhs: do n = 4, 3 + n_scalars + n_les
 
         ! get the scalar into the real space and put it in the wrk(0)
         wrk(:,:,:,0) = fields(:,:,:,n)
         call xFFT3d(-1,0)
-
-        ! <><><><><><><><><><><><> FOR NATA <><><><><><><><><><><><><><><><><><><><>
-        ! This cycle is the right moment (probably) to add the reaction to the RHS
-        ! since this is the only place where we have the scalar in real space.
-        ! There are two choices:
-        ! 1) do a fully dealiased reaction term. This requires adjustments in the 
-        ! evaluation of phase-shifted stuff as well (you want to phase shift the
-        ! scalar and compute s*(1-s) there, etc, and add 0.5 of it to RHS.  Then
-        ! do the same here with not phase-shifted scalar.
-        ! 2) compute the source term only here (with not phase-shifted scalar) but
-        ! before you compute t*(1-t) in physical space you need to cut off all
-        ! the modes outside of the small cube (all modes with ialias>0) from t.  This
-        ! might require some thinking because later we need the scalar with the modes
-        ! ialias<2, not ialias<1.  As a temporary measure, you can do it in wrk(n1)
-        ! or wrk(n2) before they are used.
-        ! <><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
-
 
         ! calculate the product of the scalar with velocitiy components
         wrk(:,:,:,n1) = wrk(:,:,:,0) * wrk(:,:,:,1)
@@ -250,9 +256,12 @@ subroutine rhs_scalars
 
      end do not_phase_shifted_rhs
 
-     ! --------------------------------------------------
+     ! ------------------------------------------------------------
      ! Add the reaction rates to the RHS     
-     ! --------------------------------------------------
+     ! 
+     ! The LES-related scalars are not affected because the 
+     ! upper bound for n is 3+n_scalars, not 3+n_scalars+n_les
+     ! -----------------------------------------------------------
 
      reaction_rates: do n = 4, 3+n_scalars
 
@@ -364,9 +373,16 @@ subroutine rhs_scalars
         if (scalar_type(n) .eq. 0) wrk(:,:,:,n+3) = wrk(:,:,:,n+3) - fields(:,:,:,1)
      end do gradient_source
 
+  end if phase_shifting_dealiasing
 
 
-  end if
+  ! ----------------------------------------------------------------------
+  ! Add LES to the RHS of all the scalars
+  ! ----------------------------------------------------------------------
+  les_active: if (les) then
+     call les_rhs_scalars
+  end if les_active
+
 
   return
 end subroutine rhs_scalars

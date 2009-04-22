@@ -12,6 +12,7 @@ program x_code
   use m_rand_knuth
   use m_particles
   use m_filter_xfftw
+  use m_les
 
   implicit none
 
@@ -22,6 +23,7 @@ program x_code
   call m_openmpi_init
   call m_io_init
   call m_parameters_init
+  call m_les_init
   call m_fields_init
   call m_work_init
 
@@ -58,6 +60,9 @@ program x_code
      call begin_restart
   endif
 
+  ! Initializing the LES stuff
+  if (les) call m_les_begin
+
   ! checking divergence
   if (task.eq.'hydro') call divergence
 
@@ -91,12 +96,15 @@ program x_code
 !--------------------------------------------------------------------------------
 !--------------------------------------------------------------------------------
 !                             HYDRO PART
-!   note that even if we're not task splitting, 'hydro' part is always there
+!   note that even in the case where there is no task splitting,
+!   'hydro' part is still there.  all processors will have task = 'hydro'
 !--------------------------------------------------------------------------------
      hydro: if (task.eq.'hydro') then
 
-        ! RHS for passive scalars
+        ! RHS for scalars
         call rhs_scalars
+!!$        write(out,*) "done with rhs_scalars"
+!!$        call flush(out)
 
         ! now the velocities in x-space are contained in wrk1...3
         ! if we are moving particles, then we want to send the velocity field
@@ -105,9 +113,9 @@ program x_code
 
 
         ! advance scalars - either Euler or Adams-Bashforth
-        if (int_scalars) then
+        if (int_scalars .or. n_les > 0) then
            call flush(out)
-           n = 3 + n_scalars
+           n = 3 + n_scalars + n_les
            if (fos) then
               rhs_old(:,:,:,4:n) = wrk(:,:,:,4:n)
               fields(:,:,:,4:n) = fields(:,:,:,4:n) + dt * rhs_old(:,:,:,4:n)
@@ -156,7 +164,8 @@ program x_code
            else
               sym = " "
            end if
-           write(out,9000) itime,time,dt,courant,cpu_hrs,cpu_min,cpu_sec,sym
+           write(out,9000) itime,time,dt,courant,cpu_hrs,cpu_min,cpu_sec,&
+                sym,les_model_name
            call flush(out)
         end if
 
@@ -265,5 +274,5 @@ program x_code
 
      stop
 9000 format('ITIME=',i6,3x,'TIME=',f8.4,4x,'DT=',f8.5,3x,'Courn= ',f6.4, &
-          2x,'CPU:(',i4.4,':',i2.2,':',i2.2,')',a1)
+          2x,'CPU:(',i4.4,':',i2.2,':',i2.2,')',x,a1,x,a3)
    end program x_code

@@ -1,7 +1,7 @@
 !================================================================================
 ! M_WORK - module that contains working arrays wrk1....wrk15.
 !
-! Time-stamp: <2008-12-22 17:01:14 (chumakov)>
+! Time-stamp: <2009-04-21 11:58:25 (chumakov)>
 !================================================================================
 module m_work
 
@@ -38,7 +38,7 @@ contains
     ! allocating work arrays
     if (task.eq.'hydro')  then
 
-       call m_work_allocate(max(6,5+n_scalars))
+       call m_work_allocate(max(6,5+n_scalars+n_les))
 
     elseif (task.eq.'stats')  then
 
@@ -101,7 +101,7 @@ contains
 
     ! array for the spare RHS for Adams-Bashforth time-stepping scheme methods
     if (task.eq.'hydro') then
-       allocate(rhs_old(nx+2,ny,nz,3+n_scalars),stat=i); ierr = ierr + i
+       allocate(rhs_old(nx+2,ny,nz,3+n_scalars+n_les),stat=i); ierr = ierr + i
     end if
 
     if (ierr.ne.0) then
@@ -113,7 +113,7 @@ contains
     end if
 
     if (allocated(wrk)) write(out,"('allocated wrk(nx+2,ny,nz,0:',i3,')')") number
-    if (allocated(rhs_old)) write(out,"('allocated rhs_old(nx+2,ny,nz,1:',i3,')')") 3+n_scalars
+    if (allocated(rhs_old)) write(out,"('allocated rhs_old(nx+2,ny,nz,1:',i3,')')") 3+n_scalars+n_les
     call flush(out)
 
     tmp4 = 0.0

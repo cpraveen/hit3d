@@ -77,7 +77,7 @@ subroutine begin_restart
 !!$!================================================================================
 
   ! deciding whether we advance scalars or not
-  if (time.gt.TSCALAR) then
+  if (n_scalars.gt.0  .and. time.gt.TSCALAR) then
      int_scalars = .true.
      write(out,"('Advancing ',i3,' scalars.')") n_scalars
   end if
