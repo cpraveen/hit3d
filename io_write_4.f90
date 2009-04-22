@@ -7,6 +7,7 @@ subroutine io_write_4
   use m_fields
   use m_work
   use x_fftw
+  use m_les
 
   implicit none
 
@@ -22,6 +23,7 @@ subroutine io_write_4
   ! number of variables to write out
   n_out = 3
   if (int_scalars) n_out = n_out + n_scalars
+  if (les .and. n_les>0) n_out = n_out + n_les
 
   ! putting all variables in wrk array
   do k = 1,nz
@@ -64,6 +66,26 @@ subroutine io_write_4
         call write_tmp4_all
 
      end do
+  end if
+
+  ! LES quantities
+  if (les) then
+     ! turbulent viscosity
+     if (allocated(turb_visc)) then
+        write(fname,"('nu_t.',a6)") file_ext
+        tmp4 = turb_visc
+        call write_tmp4_all
+     end if
+
+     if (n_les > 0) then
+        do n = 1, n_les
+           call xFFT3d(-1,3+n_scalars+n)
+           write(fname,"('les',i1,'.',a6)") n,file_ext
+           tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,3+n_scalars+n)
+           call write_tmp4_all
+        end do
+     end if
+
   end if
 
   return

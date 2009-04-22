@@ -630,7 +630,7 @@ CONTAINS
 !  Subroutine that calculates the derivative.
 !
 !  Takes variable from wrk(:,:,:,n), differentiates it and put into
-!  wrk(:,:,:,nto)
+!  wrk(:,:,:,nto).  All happens in Fourier space
 !==============================================================================!
 
   subroutine x_derivative(n,axis,nto)

@@ -6,6 +6,7 @@ subroutine rhs_velocity
   use m_fields
   use m_work
   use x_fftw
+  use m_les
 
   implicit none
 
@@ -406,12 +407,13 @@ subroutine rhs_velocity
         end do
      end do
 
-
-
-
-
   end if phase_shifting
 
+  ! if performing large eddy simulations, call LES subroutine to augment
+  ! the right hand side for velocioties
+  les_active: if (les) then
+     call les_rhs_velocity
+  end if les_active
 
   return
 end subroutine rhs_velocity

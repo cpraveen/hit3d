@@ -2,7 +2,7 @@
 ! M_PARAMETERS - module for all parameters in the calculation: 
 !                such as array dimensions, reynolds numbers, switches/flags etc.
 !
-! Time-stamp: <2009-02-11 15:25:45 (chumakov)>
+! Time-stamp: <2009-04-21 09:21:30 (chumakov)>
 ! Time-stamp: <2008-11-20 17:27:59 MST (vladimirova)>
 !================================================================================
 
@@ -67,9 +67,8 @@ module m_parameters
   ! and the total number of particles
   integer(kind=MPI_INTEGER_KIND) :: np, np1, nptot
 
-
-
-  integer :: iles
+  ! If using Large Eddy Simulation (LES), the LES model ID is here
+  integer :: les_model
 
   integer, allocatable :: scalar_type(:)
   real*8, allocatable  :: pe(:), sc(:), ir_exp_sc(:), peak_wavenum_sc(:), reac_sc(:)
@@ -90,6 +89,9 @@ module m_parameters
 
   logical      :: int_scalars, int_particles
 
+
+  ! --- number of LES variables in the arrays (initialized to zero)
+  integer :: n_les = 0
 
 !================================================================================
 contains
@@ -397,8 +399,8 @@ contains
 
     ! -------------------------------------------------------------
 
-    read(in,*,ERR=9000,END=9000) iles
-    write(out,*) 'iles     =',iles
+    read(in,*,ERR=9000,END=9000) les_model
+    write(out,*) 'les_model    =',les_model
     read(in,*)      
     write(out,"(70('-'))")
     call flush(out)

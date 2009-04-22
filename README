@@ -34,3 +34,9 @@ of scalar:
 Scalars' properties are specified in the *.in file in the table: 
 
   type, Sc, infrared exponent, peak wavenumber, reaction rate
+
+_______________________________________________________________________
+LES MODE SWITCH  les_mode
+-----------------------------------------------------------------------
+0 - no LES, perform straight DNS
+1 - Smagorinsky model for velocity
