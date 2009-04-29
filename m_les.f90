@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-04-22 13:11:21 (chumakov)>
+!  Time-stamp: <2009-04-22 16:34:24 (chumakov)>
 !================================================================================
 module m_les
 
@@ -523,8 +523,8 @@ contains
     use x_fftw
     implicit none
 
-!!$    real*8 :: C_k = 0.05d0
-    real*8 :: C_k = 0.1d0
+!!$    real*8 :: C_k = 0.05d0 ! This is take from Yoshizawa and Horiuti (1985)
+    real*8 :: C_k = 0.1d0 ! This is what works for this code.  Dunno why...
     real*8 :: sctmp, sctmp1
 
 !!$    write(out,*) "Calculating turbulent viscosity using DLM model"
