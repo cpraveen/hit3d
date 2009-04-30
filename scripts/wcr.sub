@@ -9,6 +9,9 @@
 # setting the general parameters
 #----------------------------------------------------------------------
 
+# Your email address for emails
+MY_EMAIL=bogus@email.address
+
 # Resolution and the run number
 RES=256
 RUN=00
@@ -35,6 +38,23 @@ LOADER_OPTS="-hostfile hosts.txt -v -mca mpi_preconnect_all 1  -mca mpi_preconne
 # Job number
 JOBNUM=$(echo $PBS_JOBID | awk -F"." '{print $1}')
 
+#----------------------------------------------------------------------
+# Function that finds the number of the last dump file
+#----------------------------------------------------------------------
+find_last_iter()
+{
+    list_restart_files=( `/bin/ls -1 $1.64.?????? 2>/dev/null` )
+     n_files=${#list_restart_files[*]}
+     if [ $n_files -eq 0 ]
+ 	then
+ 	ITER_LAST=000000
+     else
+ 	restart_file=${list_restart_files[$n_files-1]}
+ 	ITER_LAST=`echo $restart_file | sed 's/.*\..*\.\(.*\)/\1/'`
+     fi
+
+#     ITER_LAST=$(/bin/ls -1 *.64.* | tail -n1 | awk -F"." '{print $NS}')
+}
 # --------------------------------------------------------------------
 #  The main script
 # --------------------------------------------------------------------
@@ -85,7 +105,7 @@ echo "600" > job_parameters.txt
 
 # Mailing me that the job is about to start
 line="[WCR] Job $JOBNUM <$RUN_TITLE> $ITER_LAST started (`date +'%D %R'`)"
-mail chumakov@stanford.edu -s "$line" <<EOF
+mail $MY_EMAIL -s "$line" <<EOF
 
 EOF
 
@@ -106,27 +126,10 @@ echo "`date +'%D %R'` : The last iteration now is $ITER_LAST.">>$LOG
 
 # Mailing me that the job just ended
 line="[WCR] Job $JOBNUM <$RUN_TITLE> $ITER_LAST ended (`date +'%D %R'`)"
-(gnuplot snapshot.gp; uuencode 1.png 1.png; uuencode 2.png 2.png) | mail -s "$line" chumakov@stanford.edu
+(gnuplot snapshot.gp; uuencode 1.png 1.png; uuencode 2.png 2.png) | mail -s "$line" $MY_EMAIL
 
 EOF
 
 exit 0
 
-#----------------------------------------------------------------------
-# Function that finds the number of the last dump file
-#----------------------------------------------------------------------
-find_last_iter()
-{
-    list_restart_files=( `/bin/ls -1 $1.64.?????? 2>/dev/null` )
-     n_files=${#list_restart_files[*]}
-     if [ $n_files -eq 0 ]
- 	then
- 	ITER_LAST=000000
-     else
- 	restart_file=${list_restart_files[$n_files-1]}
- 	ITER_LAST=`echo $restart_file | sed 's/.*\..*\.\(.*\)/\1/'`
-     fi
-
-#     ITER_LAST=$(/bin/ls -1 *.64.* | tail -n1 | awk -F"." '{print $NS}')
-}
 
