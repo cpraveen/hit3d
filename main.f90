@@ -101,11 +101,13 @@ program x_code
 !--------------------------------------------------------------------------------
      hydro: if (task.eq.'hydro') then
 
+        ! ------------------------------------------------------------
         ! taking care of rescaling
         ! if the time just was divisible by TRESCALE
+        ! ------------------------------------------------------------
         if (floor((time-dt)/TRESCALE) .lt. floor(time/TRESCALE)) then 
            ! ...and if we haven't rescaled NRESCALE times
-           if (floor(time/TRESCALE) .le. NRESCALE) then
+           if (floor(time/TRESCALE) .le. NRESCALE .and. itime.ne.1) then
               write(out,*) "MAIN: Rescaling velocities"
               call flush(out)
               call velocity_rescale
@@ -114,8 +116,6 @@ program x_code
 
         ! RHS for scalars
         call rhs_scalars
-!!$        write(out,*) "done with rhs_scalars"
-!!$        call flush(out)
 
         ! now the velocities in x-space are contained in wrk1...3
         ! if we are moving particles, then we want to send the velocity field
