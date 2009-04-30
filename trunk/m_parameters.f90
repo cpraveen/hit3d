@@ -2,7 +2,7 @@
 ! M_PARAMETERS - module for all parameters in the calculation: 
 !                such as array dimensions, reynolds numbers, switches/flags etc.
 !
-! Time-stamp: <2009-04-21 09:21:30 (chumakov)>
+! Time-stamp: <2009-04-30 12:07:52 (chumakov)>
 ! Time-stamp: <2008-11-20 17:27:59 MST (vladimirova)>
 !================================================================================
 
@@ -28,6 +28,9 @@ module m_parameters
   integer :: ITIME, ITMIN, ITMAX, IPRINT1, IPRINT2, IWRITE4
 
   real*8  :: TMAX, TRESCALE, TSCALAR, RE, nu, dt
+
+  ! now many times to rescale teh velocities
+  integer :: NRESCALE
 
   integer :: flow_type
 
@@ -238,8 +241,8 @@ contains
     read(in,*,ERR=9000,END=9000) TMAX
     write(out,*) 'TMAX     =',TMAX  
 
-    read(in,*,ERR=9000,END=9000) TRESCALE
-    write(out,*) 'TRESCALE =',TRESCALE
+    read(in,*,ERR=8000,END=9000) TRESCALE, NRESCALE
+100 write(out,*) 'TRESCALE, NRESCALE =',TRESCALE, NRESCALE
 
     read(in,*,ERR=9000,END=9000) TSCALAR
     write(out,*) 'TSCALAR  =',TSCALAR
@@ -479,6 +482,18 @@ contains
     end if
 
     return
+
+!--------------------------------------------------------------------------------
+!  ERROR PROCESSING
+!--------------------------------------------------------------------------------
+
+8000 continue
+    NRESCALE = 0
+    if (TRESCALE.gt.zip) NRESCALE = 1
+    write(out,*) "*** NRESCALE IS AUTOMATICALLY ASSIGNED to be ONE"
+    call flush(out)
+    goto 100
+
 9000 continue
     write(out,*)'An error was encountered while reading input file'
     call flush(out)

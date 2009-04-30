@@ -101,6 +101,17 @@ program x_code
 !--------------------------------------------------------------------------------
      hydro: if (task.eq.'hydro') then
 
+        ! taking care of rescaling
+        ! if the time just was divisible by TRESCALE
+        if (floor((time-dt)/TRESCALE) .lt. floor(time/TRESCALE)) then 
+           ! ...and if we haven't rescaled NRESCALE times
+           if (floor(time/TRESCALE) .le. NRESCALE) then
+              write(out,*) "MAIN: Rescaling velocities"
+              call flush(out)
+              call velocity_rescale
+           end if
+        end if
+
         ! RHS for scalars
         call rhs_scalars
 !!$        write(out,*) "done with rhs_scalars"
@@ -214,7 +225,7 @@ program x_code
 !  requirements on the wrk array sizes in the particle interpolation routines.
 !--------------------------------------------------------------------------------
      particles: if (task.eq.'parts') then
-        
+
         call fields_to_parts
 
         if (int_particles) then
@@ -251,7 +262,12 @@ program x_code
         if (myid_world.eq.0) call m_timing_check
         count = 1
         call MPI_BCAST(cpu_min_total,count,MPI_INTEGER4,0,MPI_COMM_WORLD,mpi_err)
+
         ! allowing 5 extra minutes for writing restart file
+        ! note that for large-scale calculations (e.g. 1024^3)
+        ! the restart writing time can be long (up to 20 minutes or so).
+        ! this should be taken care of in the job submission script
+        ! via file job_parameters.txt
         if (cpu_min_total+5 .gt. job_runlimit) call my_exit(2)
 
         ! user termination.  If the file "stop" is in the directory, stop

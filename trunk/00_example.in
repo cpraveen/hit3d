@@ -10,7 +10,7 @@ INPUT FILE FOR THE SPECTRAL CODE WITH SCALARS   (example for v.1.0.0)
 500		IWRITE4  how often to write real*4 binary files
 ----------------------------------------------------------------------
 10.0		TMAX     the maximum simulation time
-1000.0          TRESCALE time when to rescale the velocity (definct)
+1.0 3           TRESCALE, NRESCALE  rescale time and # of rescales
 0.0             TSCALAR  time when to start moving scalars in the flow
 ----------------------------------------------------------------------
 1               ITYPV    flow type: 0=decay, 1=forced
