@@ -67,6 +67,7 @@ OBJ     = main.o\
 	restart_io.o\
 	rhs_velocity.o\
 	rhs_scalars.o\
+	velocity_rescale.o\
 	write_tmp4.o
 
 
