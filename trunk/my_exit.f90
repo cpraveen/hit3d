@@ -50,7 +50,7 @@ subroutine my_exit(reason)
   case default 
 
      write(out,*) '---------------------------------------------'
-     write(out,*) '      TERMIATION FOR NO APPARENT REASON'
+     write(out,*) '      TERMINATION FOR NO APPARENT REASON'
      write(out,*) '---------------------------------------------'
 
   end select
