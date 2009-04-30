@@ -37,6 +37,19 @@ Scalars' properties are specified in the *.in file in the table:
 
 _______________________________________________________________________
 LES MODE SWITCH  les_mode
------------------------------------------------------------------------
 0 - no LES, perform straight DNS
 1 - Smagorinsky model for velocity
+2 - Dynamic Localization Model with constant coefficients, or Yoshizawa Model.
+
+
+
+-----------------------------------------------------------------------
+RUNNING THE CODE
+-----------------------------------------------------------------------
+The directory "scripts" provides some examples of the batch job submission files.
+
+snapshot.gp	a Gnuplot instruction file that creates two plots that 
+ 		can get attached to the notification emails 
+
+wcr.sub     	Example script for WCR cluster at Center for 
+		Turbuience Research, Stanford
