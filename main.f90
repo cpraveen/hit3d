@@ -102,10 +102,10 @@ program x_code
      hydro: if (task.eq.'hydro') then
 
         ! ------------------------------------------------------------
-        ! taking care of rescaling
+        ! taking care of rescaling when running decaying turbulence
         ! if the time just was divisible by TRESCALE
         ! ------------------------------------------------------------
-        if (floor((time-dt)/TRESCALE) .lt. floor(time/TRESCALE)) then 
+        if (flow_type.eq.0 .and. floor((time-dt)/TRESCALE) .lt. floor(time/TRESCALE)) then 
            ! ...and if we haven't rescaled NRESCALE times
            if (floor(time/TRESCALE) .le. NRESCALE .and. itime.ne.1) then
               write(out,*) "MAIN: Rescaling velocities"

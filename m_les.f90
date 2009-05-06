@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-04-22 16:34:24 (chumakov)>
+!  Time-stamp: <2009-05-05 18:15:33 (chumakov)>
 !================================================================================
 module m_les
 
@@ -33,6 +33,9 @@ module m_les
   ! Smagorinsky constant
   real(kind=8) :: c_smag = 0.18
 
+  ! Scaling constant for the lag-model
+  real(kind=8) :: C_T = 1.d0
+
   ! test filter width
   real(kind=8) :: les_delta
 
@@ -41,6 +44,10 @@ module m_les
 
   ! model indicator for the output
   character*3 :: les_model_name = '   '
+
+  ! TEMP variables:
+  ! - production
+  real(kind=8) :: energy, production, B, dissipation
 
 !================================================================================
 !                            SUBROUTINES
@@ -64,6 +71,7 @@ contains
     les = .true.
     ! initialize the filter width to be equal to the grid spaxing
     les_delta = dx
+    write(out,*) 'LES_DELTA = ',les_delta
     ! initializeing stuff based on the model switch "les_model"
     select case (les_model)
     case(1)
@@ -95,6 +103,21 @@ contains
 
        n_les = 1
        les_model_name = "DLM"
+
+    case(3)
+       ! Dynamic Localization model + lag model for the dissipation
+       write(out,*) ' - DL model + lag-model for dissipation'
+       call flush(out)
+       allocate(turb_visc(nx,ny,nz),stat=ierr)
+       if (ierr/=0) then
+          write(out,*) 'Cannot allocate the turbulent viscosity array'
+          call flush(out)
+          call my_exit(-1)
+       end if
+       turb_visc = 0.0d0
+
+       n_les = 3
+       les_model_name = "DLL"
 
     case default
        write(out,*) 'M_LES_INIT: invalid value of les_model:',les_model
@@ -137,6 +160,7 @@ contains
 !================================================================================
   subroutine m_les_begin
 
+    use x_fftw
     implicit none
 
     ! if les_model=0, do not initialize anything and return
@@ -157,6 +181,29 @@ contains
 
        call m_les_dlm_k_init
 
+    case(3)
+       write(out,*) "-- DLM model with lag model for dissipation"
+       write(out,*) "-- Initializing k_sgs"
+       write(out,*) "-- Initializing k_sgs"
+       call flush(out)
+
+       call m_les_dlm_k_init
+       
+       ! making initial epsilon = k^(3/2)/Delta everywhere
+       ! since k=const=0.1, just change one entry in epsilon array
+       ! Note that the array itself contains not epsilon but (epsilon * T_epsilon)
+       ! so the contents of the array is not presicely k^(3/2)/Delta. Some math is involved.
+       ! (comment out to start from zero dissipation)
+       if (iammaster) fields(1,1,1,3+n_scalars+3) = C_T * 0.1 * real(nxyz_all)
+
+       ! Now initial conditions for B.  We want B to be same as epsilon
+       ! (kind of "starting from steady state"), but again the array contains B*T_B, not just B.
+       ! Current implementation is T_B = 1/|S|.  To get |S|, we call m_les_src_k_dlm, which
+       ! gives us |S|^2 in wrk0.
+       call m_les_k_src_dlm
+       ! now wrk0 contains |S|^2 in x-space, and we can use it to get B
+       fields(:,:,:,3+n_scalars+2) = 0.1**1.5d0 / les_delta / sqrt(wrk(:,:,:,0))
+       call xFFT3d_fields(1,3+n_scalars+2)
 
     case default
        write(out,*) "M_LES_BEGIN: invalid value of les_model: ",les_model
@@ -175,13 +222,8 @@ contains
 
     implicit none
 
-!!$    write(out,*) "Subroutine LES_RHS_VELOCITY"
-!!$    call flush(out)
-
     select case (les_model)
-    case(1:2)
-!!$       write(out,*) ' Turbulent viscosity (Smag or DLM)'
-!!$       call flush(out)
+    case(1:3)
        call les_rhsv_turb_visc
     case default
        write(out,*) 'LES_RHS_VELOCITY: invalid value of les_model:',les_model
@@ -199,13 +241,25 @@ contains
   subroutine les_rhs_scalars
     implicit none
 
+    integer :: n
+
+    if(iammaster .and. mod(itime,iprint1)==0) then
+       open(999,file='les.gp', position='append')
+       write(999,"(10e15.6)") time, energy, production, B, dissipation
+       close(999)
+    end if
+
     select case (les_model)
     case(1)
-       call les_rhss_turb_visc
+       call m_les_rhss_turb_visc
     case(2)
        call m_les_k_src_dlm
        call m_les_k_diss_algebraic
-       call les_rhss_turb_visc
+       call m_les_rhss_turb_visc
+    case(3)
+       call m_les_k_src_dlm
+       call m_les_lag_model_sources
+       call m_les_rhss_turb_visc
     case default
        write(out,*) 'LES_RHS_SCALARS: invalid value of les_model:',les_model
        call flush(out)
@@ -346,7 +400,7 @@ contains
 !    case when SGS stress tau_ij is modeled using turbulent viscosity
 !    the turb. viscosity is supposed to be in the array turb_visc(nx,ny,nz) 
 !================================================================================
-  subroutine les_rhss_turb_visc
+  subroutine m_les_rhss_turb_visc
 
     use x_fftw
     implicit none
@@ -363,7 +417,7 @@ contains
     ! viscosity to the RHS
     les_rhs_all_scalars: do n = 4, 3 + n_scalars + n_les
 
-!!$       write(out,*) "les_rhss_turb_visc: doing field #",n
+!!$       write(out,*) "m_les_rhss_turb_visc: doing field #",n
 !!$       call flush(out)
 
        ! computing the second derivative, multiplying it by turb_visc
@@ -406,7 +460,7 @@ contains
     end do les_rhs_all_scalars
 
     return
-  end subroutine les_rhss_turb_visc
+  end subroutine m_les_rhss_turb_visc
 
 
 !================================================================================
@@ -421,7 +475,7 @@ contains
     case(1)
        call les_get_turb_visc_smag
 
-    case(2)
+    case(2:3)
        call les_get_turb_visc_dlm
 
     case default
@@ -579,9 +633,9 @@ contains
     fields(:,:,:,n_k) = zip
 
     ! initializing it as a constant
-    write(out,*) "m_les_dlm_k_init: initialized k=0.2"
+    write(out,*) "m_les_dlm_k_init: initialized k=0.1"
     call flush(out)
-    fields(:,:,:,n_k) = 0.2d0
+    fields(:,:,:,n_k) = 0.1d0
     call xFFT3d_fields(1,n_k)
     return
 
@@ -702,7 +756,7 @@ contains
                 ! S_23, 0.5 (dv/dz + dw/dy)
                 wrk(i  ,j,k,n1) = - half * ( akz(j) * fields(i+1,j,k,2) + aky(k) * fields(i+1,j,k,3) )
                 wrk(i+1,j,k,n1) =   half * ( akz(j) * fields(i  ,j,k,2) + aky(k) * fields(i  ,j,k,3) )
-                ! S_33, de/dz
+                ! S_33, dw/dz
                 wrk(i  ,j,k,n2) = - akz(j) * fields(i+1,j,k,3)
                 wrk(i+1,j,k,n2) =   akz(j) * fields(i  ,j,k,3)
              end if
@@ -715,26 +769,45 @@ contains
 
     ! at this point wrk0 contains S_{ij} S_{ij} in real space.
     ! need to multiply by two and multiply by turb_visc to get the source
-    ! (the energy transfer term)
+    ! (the energy transfer term).  Assemble the transfer term in wrk(n1).
+    ! NOTE: We do not touch wrk0 because we want to preserve S_{ij}S_{ij}
+    ! for other routines.
     wrk(:,:,:,0) = two * wrk(:,:,:,0)
-    wrk(1:nx,1:ny,1:nz,0) = wrk(1:nx,1:ny,1:nz,0) * turb_visc(1:nx,1:ny,1:nz)
+    wrk(:,:,:,n1) = wrk(:,:,:,0)
+    wrk(1:nx,1:ny,1:nz,n1) = wrk(1:nx,1:ny,1:nz,n1) * turb_visc(1:nx,1:ny,1:nz)
 
     ! convert the transfer term to Fourier space
-    call xFFT3d(1,0)
+    call xFFT3d(1,n1)
 
     ! adding this energy transfer term to the RHS for k_sgs
     ! the RHS for k_sgs is supposed to be in wrk(3+n_scalars+1)
     k_n = 3 + n_scalars + 1
 
+    ! saving the mean energy transfer to be output later
+    if (iammaster) energy = fields(1,1,1,k_n) / real(nxyz_all)
+    if (iammaster) production = wrk(1,1,1,n1) / real(nxyz_all)
+
     do k = 1, nz
        do j = 1, ny
           do i = 1, nx
-             if (ialias(i,j,k).eq.0) wrk(i,j,k,k_n) = wrk(i,j,k,k_n) + wrk(i,j,k,0)
+             if (ialias(i,j,k).eq.0) wrk(i,j,k,k_n) = wrk(i,j,k,k_n) + wrk(i,j,k,n1)
           end do
        end do
     end do
-!!$    wrk(:,:,:,k_n) = wrk(:,:,:,k_n) + wrk(:,:,:,0)
 
+    ! if les_model=3 (DLM model + lag model for epsilon) then add the source term
+    ! to the RHS for B
+    if (les_model == 3) then
+       do k = 1, nz
+          do j = 1, ny
+             do i = 1, nx
+                if (ialias(i,j,k).eq.0) wrk(i,j,k,k_n+1) = wrk(i,j,k,k_n+1) + wrk(i,j,k,n1)
+             end do
+          end do
+       end do
+    end if
+
+    return
   end subroutine m_les_k_src_dlm
 
 !================================================================================
@@ -753,8 +826,8 @@ contains
 
     ! get the SGS kinetic energy in x-space
     wrk(:,:,:,0) = fields(:,:,:,n_k)
-    
-   ! first zero the modes that can produce aliasing 
+
+    ! first zero the modes that can produce aliasing 
     do k = 1, nz
        do j = 1, ny
           do i = 1, nx+2
@@ -792,6 +865,81 @@ contains
 
     return
   end subroutine m_les_k_diss_algebraic
+
+!================================================================================
+!================================================================================
+!  Model No. 3: 
+!  - Dynamic Localization model for tau_{ij} with constant coefficients
+!  - Lag-model for the dissipation term (extra two equations)
+!  - turbulent viscosity for all scalars and velocities = sqr(k) * Delta
+!================================================================================
+!================================================================================
+  subroutine m_les_lag_model_sources
+
+    use x_fftw
+
+    implicit none
+    integer :: n_k, n1, n2, i, j, k
+
+
+    ! the "field number" for k_sgs
+    n_k = 3 + n_scalars + 1
+    ! the numbers for two work arrays
+    n1 = 3 + n_scalars + n_les + 1
+    n2 = 3 + n_scalars + n_les + 2
+
+    ! Getting B from (B T_B).
+    ! Currently T_B = 1/|S|, and |S|^2 is contained in wrk0 from m_les_k_src_dlm.
+    ! - getting (B T_B) to real space
+    wrk(:,:,:,n1) = fields(:,:,:,n_k+1)
+    call xFFT3d(-1,n1)
+    ! - Dividing by T_B (multiplying by |S|)
+    wrk(:,:,:,n1) = wrk(:,:,:,n1) * sqrt(wrk(:,:,:,0))
+    ! - converting back to Fourier space
+    call xFFT3d(1,n1)
+
+    ! Getting epsilon from (epsilon T_epsilon)
+    wrk(:,:,:,n2) = fields(:,:,:,n_k+2)
+    call xFFT3d(-1,n2)
+    ! Currently T_epsilon = C_T Delta^2 / epsilon^(1/3).
+    ! Solving for epsilon:
+    wrk(:,:,:,n2) = max(wrk(:,:,:,n2), zip)
+    wrk(:,:,:,n2) = wrk(:,:,:,n2)**1.5D0 / (les_delta * C_T**1.5d0)
+    call xFFT3d(1,n2)
+
+    ! saving the mean energy, B and dissipation for output later
+    if (iammaster) B = wrk(1,1,1,n1) / real(nxyz_all)
+    if (iammaster) dissipation = wrk(1,1,1,n2) / real(nxyz_all)
+
+
+    ! Now we have B and epsilon, so we can update the RHS for k, B and epsilon
+    ! with the sources.  The energy transfer term (Pi) was added to RHSs for
+    ! k and B in the m_les_k_src_dlm.  Now adding the rest of the terms
+
+    do k = 1, nz
+       do j = 1, ny
+          do i = 1, nx + 2
+             if (ialias(i,j,k) .eq. 0) then
+
+                ! updating the RHS for k_sgs (subtracting epsilon)
+                wrk(i,j,k,n_k) = wrk(i,j,k,n_k) - wrk(i,j,k,n2) 
+
+                ! updating the RHS for B (adding Pi and subtracting B)
+                ! note that Pi is already added in subroutine m_les_k_src_dlm
+                wrk(i,j,k,n_k+1) = wrk(i,j,k,n_k+1) - wrk(i,j,k,n1)
+
+                ! updating the RHS for epsilon (adding B and subtracting epsilon)
+                wrk(i,j,k,n_k+2) = wrk(i,j,k,n_k+2) + wrk(i,j,k,n1) - wrk(i,j,k,n2)
+
+             end if
+          end do
+       end do
+    end do
+
+    return
+  end subroutine m_les_lag_model_sources
+
+
 
 !================================================================================
 !================================================================================
