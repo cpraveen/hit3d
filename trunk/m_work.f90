@@ -1,7 +1,7 @@
 !================================================================================
 ! M_WORK - module that contains working arrays wrk1....wrk15.
 !
-! Time-stamp: <2009-04-21 11:58:25 (chumakov)>
+! Time-stamp: <2009-05-15 14:50:39 (chumakov)>
 !================================================================================
 module m_work
 
@@ -38,7 +38,12 @@ contains
     ! allocating work arrays
     if (task.eq.'hydro')  then
 
-       call m_work_allocate(max(6,5+n_scalars+n_les))
+       if (les_model .eq. 4) then
+          ! The dynamic structure LES model needs more wrk arrays than usual
+          call m_work_allocate(max(6,3+n_scalars+n_les+4))
+       else
+          call m_work_allocate(max(6,3+n_scalars+n_les+2))
+       end if
 
     elseif (task.eq.'stats')  then
 

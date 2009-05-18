@@ -111,6 +111,9 @@ program x_code
               write(out,*) "MAIN: Rescaling velocities"
               call flush(out)
               call velocity_rescale
+              ! after rescaling, the time-sceping needs to be first order
+              fov = .true.; fos = .true.
+              if (.not. task_split .and. mod(itime,iprint1).eq.0) call stat_main
            end if
         end if
 
