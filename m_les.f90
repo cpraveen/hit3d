@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-05-05 18:15:33 (chumakov)>
+!  Time-stamp: <2009-05-18 11:07:15 (chumakov)>
 !================================================================================
 module m_les
 
@@ -59,7 +59,9 @@ contains
   subroutine m_les_init
     implicit none
 
+    integer :: n
     real*8, allocatable :: sctmp(:)
+
 
     ! if les_model=0, do not initialize anything and return
     if (les_model==0) return
@@ -118,6 +120,25 @@ contains
 
        n_les = 3
        les_model_name = "DLL"
+
+    case(4)
+       ! Dynamic Structure model + algenraic model for dissipation
+
+       write(out,*) ' - DSt model + algebraic model for dissipation'
+       call flush(out)
+       allocate(turb_visc(nx,ny,nz),stat=ierr)
+       if (ierr/=0) then
+          write(out,*) 'Cannot allocate the turbulent viscosity array'
+          call flush(out)
+          call my_exit(-1)
+       end if
+       turb_visc = 0.0d0
+
+       n_les = 1
+       les_model_name = "DSA"
+
+       ! Note that for this model we need a bigger wrk array
+       ! this is taken care of in m_work.f90
 
     case default
        write(out,*) 'M_LES_INIT: invalid value of les_model:',les_model
@@ -187,23 +208,47 @@ contains
        write(out,*) "-- Initializing k_sgs"
        call flush(out)
 
-       call m_les_dlm_k_init
-       
+       ! call m_les_dlm_k_init
+
+       ! COMMENT OUT THE FOLLOWING IN ORDER TO INITIALIZE B AND EPSILON AS ZERO
+
        ! making initial epsilon = k^(3/2)/Delta everywhere
-       ! since k=const=0.1, just change one entry in epsilon array
+       ! since k=const=0.5, just change one entry in epsilon array
        ! Note that the array itself contains not epsilon but (epsilon * T_epsilon)
        ! so the contents of the array is not presicely k^(3/2)/Delta. Some math is involved.
        ! (comment out to start from zero dissipation)
-       if (iammaster) fields(1,1,1,3+n_scalars+3) = C_T * 0.1 * real(nxyz_all)
+       ! if (iammaster) fields(1,1,1,3+n_scalars+3) = C_T * 0.5 * real(nxyz_all)
 
        ! Now initial conditions for B.  We want B to be same as epsilon
        ! (kind of "starting from steady state"), but again the array contains B*T_B, not just B.
        ! Current implementation is T_B = 1/|S|.  To get |S|, we call m_les_src_k_dlm, which
        ! gives us |S|^2 in wrk0.
-       call m_les_k_src_dlm
+       ! call m_les_k_src_dlm
        ! now wrk0 contains |S|^2 in x-space, and we can use it to get B
-       fields(:,:,:,3+n_scalars+2) = 0.1**1.5d0 / les_delta / sqrt(wrk(:,:,:,0))
-       call xFFT3d_fields(1,3+n_scalars+2)
+       ! fields(:,:,:,3+n_scalars+2) = 0.5**1.5d0 / les_delta / sqrt(wrk(:,:,:,0))
+       ! call xFFT3d_fields(1,3+n_scalars+2)
+
+       ! INITIALIZING K_SGS, B*T_B and eps*T_eps
+       ! Initializing them so that k_sgs = B*T_b + eps*T_eps
+       ! in fact this makes the equation for k_sgs unnecessary but we're keeping it for
+       ! debug purposes and such
+
+       write(out,*) "Initializing k_sgs = 0.1, B*T_B = eps*T_eps = 0.05"
+       call flush(out)
+       ! definition of k_sgs = 0.1 everywhere
+       if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.1d0 * real(nxyz_all)
+       ! definition of eps*T_eps = B*T_B = 0.5 k_sgs
+       if (iammaster) fields(1,1,1,3+n_scalars+2) = 0.5d0 * fields(1,1,1,3+n_scalars+1)
+       if (iammaster) fields(1,1,1,3+n_scalars+3) = 0.5d0 * fields(1,1,1,3+n_scalars+1)
+
+
+    case(4)
+       write(out,*) "-- Dynamic Structure model with algebraic model for dissipation"
+       write(out,*) "-- Initializing k_sgs = 0.1"
+       call flush(out)
+
+       if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.1d0 * real(nxyz_all)
+
 
     case default
        write(out,*) "M_LES_BEGIN: invalid value of les_model: ",les_model
@@ -260,6 +305,16 @@ contains
        call m_les_k_src_dlm
        call m_les_lag_model_sources
        call m_les_rhss_turb_visc
+    case(4)
+       call m_les_dstm_vel_k_sources
+       call m_les_k_diss_algebraic
+       if (n_scalars .gt. 0) then
+          write(out,*) "*** Current version of the code cannot transport scalars"
+          write(out,*) "*** with the les_model=4 (Dynamic Structure Model)"
+          write(out,*) "Please specify a different LES model."
+          call flush(out)
+          call my_exit(-1)
+       end if
     case default
        write(out,*) 'LES_RHS_SCALARS: invalid value of les_model:',les_model
        call flush(out)
@@ -943,4 +998,69 @@ contains
 
 !================================================================================
 !================================================================================
+!  LES model = 4, Dynamic Structure Model for tau_{ij}, algebraic model for eps_s
+!================================================================================
+!================================================================================
+
+!================================================================================
+!  Subroutine that calculates the LES sources for the velocitieis
+!================================================================================
+
+  subroutine m_les_dstm_vel_k_sources
+
+    use x_fftw
+    use m_filter_xfftw
+    
+    implicit none
+    integer :: n(5), nn, i, j, k
+
+    ! there are FIVE working arrays that we can use: wrk0 and
+    ! wrk(3+n_scalars+n_les+1....+4).  The array n(:) will contain the indicies.
+    ! in comments we'll refer to the arrays as wrk1...5
+    n(1) = 0;
+    n(2) = 3+n_scalars+n_les+1
+    n(3) = 3+n_scalars+n_les+2
+    n(4) = 3+n_scalars+n_les+3
+    n(5) = 3+n_scalars+n_les+4
+
+    ! converting k_sgs to x-space and placing it in wrk1
+    wrk(:,:,:,n(1)) = fields(:,:,:,3+n_scalars+1)
+    call xFFT3d(-1,n(1))
+
+    ! Assembling first part of L_ii in wrk2
+    wrk(:,:,:,n(3)) = fields(:,:,:,1)
+    wrk(:,:,:,n(4)) = fields(:,:,:,2)
+    wrk(:,:,:,n(5)) = fields(:,:,:,3)
+    call xFFT3d(-1,n(3))
+    call xFFT3d(-1,n(4))
+    call xFFT3d(-1,n(5))
+    wrk(:,:,:,n(2)) = wrk(:,:,:,n(3))**2 + wrk(:,:,:,n(4))**2 + wrk(:,:,:,n(5))**2
+    call filter_xfftw(n(2))
+
+    ! Putting u, v, w in wrk1..3 and filtering them
+    wrk(:,:,:,n(3)) = fields(:,:,:,1)
+    wrk(:,:,:,n(4)) = fields(:,:,:,2)
+    wrk(:,:,:,n(5)) = fields(:,:,:,3)
+    call filter_xfftw(n(3))
+    call filter_xfftw(n(4))
+    call filter_xfftw(n(5))
+    call xFFT3d(-1,n(3))
+    call xFFT3d(-1,n(4))
+    call xFFT3d(-1,n(5))
+
+    ! Now subtracting the second part of L_ii into wrk2.
+    wrk(:,:,:,n(2)) = wrk(:,:,:,n(2)) &
+         - wrk(:,:,:,n(3))**2 - wrk(:,:,:,n(4))**2 - wrk(:,:,:,n(5))**2
+
+    ! now put the scaling factor of the DStM in wrk1
+    ! the scaling factor is 2*k/L_ii
+    wrk(:,:,:,n(1)) = two * wrk(:,:,:,n(1))  / max(wrk(:,:,:,n(2)),1.d-15)
+
+
+
+
+
+  end subroutine m_les_dstm_vel_k_sources
+
+
 end module m_les

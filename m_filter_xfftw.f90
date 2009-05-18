@@ -2,7 +2,7 @@
 !  Module that contains filtering rocedure for the part of the code that
 !  addvects lagrangian particles
 !
-!  Time-stamp: <2008-11-20 17:18:04 (chumakov)>
+!  Time-stamp: <2009-05-14 15:30:25 (chumakov)>
 !======================================================================
 module m_filter_xfftw
 
@@ -139,6 +139,7 @@ contains
     if (delta .lt. dx*three) then
        write(out,*) "filter_xfftw_init: delta is too small:",delta,dx
        write(out,*) "Must be at least 3*dx = ",three*dx
+       call flush(out)
        call my_exit(-1)
     end if
 
