@@ -158,8 +158,8 @@ CONTAINS
     integer :: itmp, ix, iy, iz, n, i, j, k
     real *8 :: rnx3
 
-    write(out, *) 'Initializing FFT arrays.'
-    call flush(out)
+    ! write(out, *) 'Initializing FFT arrays.'
+    ! call flush(out)
 
 !------------------------------------------------------------------------------!
 !  filling up the array order_matrix
