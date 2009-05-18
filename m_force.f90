@@ -19,6 +19,9 @@ contains
 
     integer :: i, j, k, n, n_shell
 
+    ! if flow is not forced, return
+    if (flow_type .ne. 1) return
+
     if (task.ne.'hydro') return
 
     select case (force_type)
