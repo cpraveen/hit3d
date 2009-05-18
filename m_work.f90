@@ -1,7 +1,7 @@
 !================================================================================
 ! M_WORK - module that contains working arrays wrk1....wrk15.
 !
-! Time-stamp: <2009-05-15 14:50:39 (chumakov)>
+! Time-stamp: <2009-05-18 13:13:20 (chumakov)>
 !================================================================================
 module m_work
 
@@ -32,8 +32,8 @@ contains
     use m_parameters
     implicit none
 
-    write(out,*) "Inside m_work_init: ",task
-    call flush(out)
+!!$    write(out,*) "Inside m_work_init: ",task
+!!$    call flush(out)
 
     ! allocating work arrays
     if (task.eq.'hydro')  then
@@ -75,8 +75,8 @@ contains
        call my_exit(-1)
     end if
 
-    write(out,*) "Finished m_work_init"
-    call flush(out)
+!!$    write(out,*) "Finished m_work_init"
+!!$    call flush(out)
 
     return
   end subroutine m_work_init
@@ -95,8 +95,8 @@ contains
 
     ierr = 0
 
-    write(out,"('Allocating work: ',i3)") number
-    call flush(out)
+!!$    write(out,"('Allocating work: ',i3)") number
+!!$    call flush(out)
 
     ! array that is needed for output (nx,ny,nz)
     allocate(tmp4(nx,ny,nz),stat=i);   ierr = ierr + i;
