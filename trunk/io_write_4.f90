@@ -45,17 +45,17 @@ subroutine io_write_4
   call xFFT3d(-1,1)
   fname = 'u.'//file_ext
   tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,1)
-  call write_tmp4_all
+  call write_tmp4
 
   call xFFT3d(-1,2)
   fname = 'v.'//file_ext
   tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,2)
-  call write_tmp4_all
+  call write_tmp4
 
   call xFFT3d(-1,3)
   fname = 'w.'//file_ext
   tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,3)
-  call write_tmp4_all
+  call write_tmp4
 
   ! scalars
   if (int_scalars) then
@@ -63,7 +63,7 @@ subroutine io_write_4
         call xFFT3d(-1,3+n)
         write(fname,"('sc',i2.2,'.',a6)") n,file_ext
         tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,3+n)
-        call write_tmp4_all
+        call write_tmp4
 
      end do
   end if
@@ -74,7 +74,7 @@ subroutine io_write_4
      if (allocated(turb_visc)) then
         write(fname,"('nu_t.',a6)") file_ext
         tmp4 = turb_visc
-        call write_tmp4_all
+        call write_tmp4
      end if
 
      if (n_les > 0) then
@@ -82,7 +82,7 @@ subroutine io_write_4
            call xFFT3d(-1,3+n_scalars+n)
            write(fname,"('les',i1,'.',a6)") n,file_ext
            tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,3+n_scalars+n)
-           call write_tmp4_all
+           call write_tmp4
         end do
      end if
 

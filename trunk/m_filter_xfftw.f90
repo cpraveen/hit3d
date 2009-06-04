@@ -2,7 +2,7 @@
 !  Module that contains filtering rocedure for the part of the code that
 !  addvects lagrangian particles
 !
-!  Time-stamp: <2009-05-14 15:30:25 (chumakov)>
+!  Time-stamp: <2009-05-20 11:50:52 (chumakov)>
 !======================================================================
 module m_filter_xfftw
 
@@ -136,6 +136,8 @@ contains
     filter_size = particles_filter_size
     delta = filter_size
 
+    if (task.eq.'hydro') delta = dx*four
+
     if (delta .lt. dx*three) then
        write(out,*) "filter_xfftw_init: delta is too small:",delta,dx
        write(out,*) "Must be at least 3*dx = ",three*dx
@@ -143,7 +145,7 @@ contains
        call my_exit(-1)
     end if
 
-    write(out,*)'initializing the filter'
+    write(out,"('initializing the filter, filter_size = ',2e15.6)") delta, dx
     call flush(out)
 
     ! the main idea is as follows:
