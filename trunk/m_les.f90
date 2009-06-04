@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-06-01 16:54:31 (chumakov)>
+!  Time-stamp: <2009-06-04 15:19:33 (chumakov)>
 !================================================================================
 module m_les
 
@@ -38,6 +38,9 @@ module m_les
 
   ! Scaling constant for the lag-model
   real(kind=8) :: C_T = 1.d0
+
+  ! Scaling constant for the mixed model
+  real(kind=8) :: C_mixed
 
   ! test filter width
   real(kind=8) :: les_delta
@@ -163,6 +166,51 @@ contains
 
        n_les = 3
        les_model_name = "STL"
+
+       ! Fot this model we need a filter.  The filter cannot be initialized
+       ! without previous initialization of fields array.  So initialization of
+       ! the filter is done in m_les_begin
+
+       ! Note that for this model we need a bigger wrk array
+       ! this is taken care of in m_work.f90
+
+    case(6)
+       ! Mixed model: Dynamic Structure + some viscosity (about 15% of the usual)
+       ! Dissipation model is algebraic
+
+       write(out,*) ' - MIXED MODEL: DSTM + eddy viscosity'
+       write(out,*) ' -              Dissipation is algebraic'
+       call flush(out)
+
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG+
+       inquire(file = 'c_mixed.txt', exist = there)
+       if (.not.there) then
+          write(out,*) "Cannot find the file 'c_mixed.txt', exiting"
+          call my_exit(-1)
+       end if
+       if (iammaster) then
+          open(900,file='c_mixed.txt')
+          read(900,*) C_mixed
+          close(900)
+       end if
+       count = 1
+       call MPI_BCAST(C_mixed,count,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
+       write(out,*) "MIXED MODEL WITH C_MIXED = ",C_mixed
+       call flush(out)
+
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG-
+       
+
+       allocate(turb_visc(nx,ny,nz), vel_source_les(nx+2,ny,nz,3), stat=ierr)
+       if (ierr/=0) then
+          write(out,*) 'Cannot allocate the turbulent viscosity array'
+          call flush(out)
+          call my_exit(-1)
+       end if
+       turb_visc = 0.0d0
+
+       n_les = 1
+       les_model_name = "MMA"
 
        ! Fot this model we need a filter.  The filter cannot be initialized
        ! without previous initialization of fields array.  So initialization of
@@ -310,6 +358,25 @@ contains
        call filter_xfftw_init
        fields(:,:,:,LBOUND(fields,4)) = wrk(:,:,:,LBOUND(wrk,4))
 
+    case(6)
+       write(out,*) "-- MIXED MODEL (Dynamic Structure model + DLM)"
+       write(out,*) "               Algebraic model for dissipation"
+       write(out,*) "-- Initializing k_sgs = 0.5"
+       call flush(out)
+
+       if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.5d0 * real(nxyz_all)
+       if (iammaster) fields(1,1,1,3+n_scalars+3) = 0.d0*fields(1,1,1,3+n_scalars+1)
+
+       ! initializing filtering arrays
+       ! because filter_xfftw_init uses fields(1) as a temporary array, we need
+       ! to store it before we initialize the filter, and the restore it to
+       ! what it was.
+       write(out,*) "Initializing filter"
+       call flush(out)
+       wrk(:,:,:,LBOUND(wrk,4)) = fields(:,:,:,LBOUND(fields,4))
+       call filter_xfftw_init
+       fields(:,:,:,LBOUND(fields,4)) = wrk(:,:,:,LBOUND(wrk,4))
+
     case default
        write(out,*) "M_LES_BEGIN: invalid value of les_model: ",les_model
        call flush(out)
@@ -334,6 +401,13 @@ contains
        ! Dynamic Structure model
        ! add the velocity sources to RHS for velocitieis
        wrk(:,:,:,1:3) = wrk(:,:,:,1:3) + vel_source_les(:,:,:,1:3)
+
+    case(6)
+       ! Mixed model (DSTM + DLM)
+       ! add the velocity sources to RHS for velocitieis
+       wrk(:,:,:,1:3) = wrk(:,:,:,1:3) + vel_source_les(:,:,:,1:3)
+       ! also apply turbulent viscosity
+       call les_rhsv_turb_visc
 
     case default
        write(out,*) 'LES_RHS_VELOCITY: invalid value of les_model:',les_model
@@ -360,6 +434,9 @@ contains
        write(999,"(i6,x,10e15.6)") itime, time, energy, production, B, dissipation
        close(999)
     end if
+
+    ! note that the turbulent viscosity itself is computed in rhs_scalars.f90
+    ! here we only modify the RHSs for scalars in case we're running LES
 
     select case (les_model)
     case(1)
@@ -414,6 +491,30 @@ contains
        call m_les_lag_model_sources
        ! diffusing k_s, (BT) and (epsilon*T) with turbulent viscosity
        call m_les_rhss_turb_visc
+
+    case(6) 
+       ! Mixed model (Dynamic Structure model + 15% of Dynamic Localization model)
+       ! 
+       ! First taking care of the passive scalars (don't have them for now)
+       if (n_scalars .gt. 0) then
+          write(out,*) "*** Current version of the code cannot transport scalars"
+          write(out,*) "*** with the les_model=6 (Mixed Model)"
+          write(out,*) "Please specify a different LES model."
+          call flush(out)
+          call my_exit(-1)
+       end if
+       ! now taking care of the LES-related scalars
+       ! for the mixed model, scalars and velocities have turbulent viscosity
+       ! so need to add that term.
+
+       ! getting DSTM sources for velocities and production for k_sgs
+       call m_les_dstm_vel_k_sources  
+       ! getting the DLM transfer term turb_visc*|S|^2 and adding to the RHS for k_sgs
+       call m_les_k_src_dlm
+       ! diffusing k_sgs with turbulent viscosity
+       call m_les_rhss_turb_visc
+       ! algebraic model for dissipation of k_sgs: k^{3/2}/Delta
+       call m_les_k_diss_algebraic
 !!$! --------------------------------------------------
 !!$        wrk(:,:,:,0) = wrk(:,:,:,3+n_scalars+1)
 !!$        call xFFT3d(-1,0)
@@ -644,6 +745,10 @@ contains
 
        call les_get_turb_visc_dlm
 
+    case(6)
+       
+       call les_get_turb_visc_dlm
+
     case default
        write(out,*) "LES_GET_TURB_VISC: les_model: ", les_model
        write(out,*) "LES_GET_TURB_VISC: Not calculating turb_visc"
@@ -783,18 +888,18 @@ contains
 
     turb_visc(1:nx,1:ny,1:nz) = C_k * les_delta * sqrt(wrk(1:nx,1:ny,1:nz,0))
 
-![[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[
-    if (mod(itime,iwrite4).eq.0) then
-       tmp4 = turb_visc
-       write(fname,"('nut1.',i6.6)") itime
-       call write_tmp4
-
-       tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,0)
-       write(fname,"('k1.',i6.6)") itime
-       call write_tmp4
-
-    end if
-!]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]
+!!$![[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[
+!!$    if (mod(itime,iwrite4).eq.0) then
+!!$       tmp4 = turb_visc
+!!$       write(fname,"('nut1.',i6.6)") itime
+!!$       call write_tmp4
+!!$
+!!$       tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,0)
+!!$       write(fname,"('k1.',i6.6)") itime
+!!$       call write_tmp4
+!!$
+!!$    end if
+!!$!]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]
 
     ! If the minimum of k_sgs is less than zero, we want to clip it
     ! mercilessly (already done in wrk0) then put it back in Fourier space
@@ -989,6 +1094,7 @@ contains
     if (iammaster) energy = fields(1,1,1,k_n) / real(nxyz_all)
     if (iammaster) production = wrk(1,1,1,n1) / real(nxyz_all)
 
+    ! adding the source for k_sgs
     do k = 1, nz
        do j = 1, ny
           do i = 1, nx
@@ -1171,6 +1277,13 @@ contains
     character :: dir_i, dir_j
     logical :: diagonal
 
+
+    ! temporary array to store the complete k-source and write it out
+    real*4, allocatable :: k_source(:,:,:)
+    allocate(k_source(1:nx,1:ny,1:nz))
+    k_source = zip
+    
+
     ! there are FIVE working arrays that we can use: wrk0 and
     ! wrk(3+n_scalars+n_les+1....+4).  The array n(:) will contain the indicies.
     ! in comments we'll refer to the arrays as wrk1...5
@@ -1262,6 +1375,8 @@ contains
     ! the special array vel_source_les(:,:,:,:)
     vel_source_les = zip
 
+    k_source = zip
+
     ! production for output
     if (iammaster) production = zip
 
@@ -1322,6 +1437,11 @@ contains
           call x_derivative(n3,dir_j,n3)
           call xFFT3d(-1,n3)
           wrk(:,:,:,n5) = - wrk(:,:,:,n3) * wrk(:,:,:,n2)
+
+          
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG +
+          k_source(:,:,:) = k_source(:,:,:) + wrk(1:nx,:,:,n5)
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG -
 
           ! converting both tau_{ij} and souce for k_sgs to Fourier space
           call xFFT3d(1,n2)
@@ -1417,6 +1537,16 @@ contains
        write(698,"(i6,x,3e15.6)") itime, fs, bs, production
        call flush(698)
     end if
+
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG +
+          ! writing out k_source
+          if (mod(itime,iwrite4).eq.0) then
+             tmp4 = k_source
+             write(fname,"('pi.',i6.6)") itime
+             call write_tmp4
+          end if
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG -
+
 
 
   end subroutine m_les_dstm_vel_k_sources
