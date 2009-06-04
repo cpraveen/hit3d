@@ -130,6 +130,7 @@ program x_code
         if (int_scalars .or. n_les > 0) then
            call flush(out)
            n = 3 + n_scalars + n_les
+
            if (fos) then
               rhs_old(:,:,:,4:n) = wrk(:,:,:,4:n)
               fields(:,:,:,4:n) = fields(:,:,:,4:n) + dt * rhs_old(:,:,:,4:n)
@@ -139,6 +140,7 @@ program x_code
                    dt * ( 1.5d0 * wrk(:,:,:,4:n)  - 0.5d0 * rhs_old(:,:,:,4:n) )
               rhs_old(:,:,:,4:n) = wrk(:,:,:,4:n)
            end if
+
         end if
 
         ! RHS for velocities
@@ -219,6 +221,13 @@ program x_code
 
         end if
      end if stats
+
+           if (iammaster) then
+              ! plotting mean values of K and RHS of K
+              write(706,"(i6,x,10e15.6)") itime, time, fields(1,1,1,4)/real(nxyz_all), &
+                   wrk(1,1,1,4)/real(nxyz_all)
+              call flush(706)
+           end if
 
 !--------------------------------------------------------------------------------
 !                             PARTICLE PARTS

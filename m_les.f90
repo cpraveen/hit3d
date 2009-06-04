@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-05-18 11:07:15 (chumakov)>
+!  Time-stamp: <2009-06-01 16:54:31 (chumakov)>
 !================================================================================
 module m_les
 
@@ -29,6 +29,9 @@ module m_les
 
   ! array for turbulent viscosity
   real(kind=8), allocatable :: turb_visc(:,:,:)
+
+  ! LES sources for velocities
+  real(kind=8), allocatable :: vel_source_les(:,:,:,:)
 
   ! Smagorinsky constant
   real(kind=8) :: c_smag = 0.18
@@ -57,6 +60,7 @@ contains
 !  Allocation of LES arrays
 !================================================================================
   subroutine m_les_init
+
     implicit none
 
     integer :: n
@@ -126,7 +130,7 @@ contains
 
        write(out,*) ' - DSt model + algebraic model for dissipation'
        call flush(out)
-       allocate(turb_visc(nx,ny,nz),stat=ierr)
+       allocate(turb_visc(nx,ny,nz), vel_source_les(nx+2,ny,nz,3), stat=ierr)
        if (ierr/=0) then
           write(out,*) 'Cannot allocate the turbulent viscosity array'
           call flush(out)
@@ -135,10 +139,38 @@ contains
        turb_visc = 0.0d0
 
        n_les = 1
-       les_model_name = "DSA"
+       les_model_name = "DST"
+
+       ! Fot this model we need a filter.  The filter cannot be initialized
+       ! without previous initialization of fields array.  So initialization of
+       ! the filter is done in m_les_begin
 
        ! Note that for this model we need a bigger wrk array
        ! this is taken care of in m_work.f90
+
+    case(5)
+       ! Dynamic Structure model + lag model for dissipation
+
+       write(out,*) ' - DSt model + lag model for dissipation'
+       call flush(out)
+       allocate(turb_visc(nx,ny,nz), vel_source_les(nx+2,ny,nz,3), stat=ierr)
+       if (ierr/=0) then
+          write(out,*) 'Cannot allocate the turbulent viscosity array'
+          call flush(out)
+          call my_exit(-1)
+       end if
+       turb_visc = 0.0d0
+
+       n_les = 3
+       les_model_name = "STL"
+
+       ! Fot this model we need a filter.  The filter cannot be initialized
+       ! without previous initialization of fields array.  So initialization of
+       ! the filter is done in m_les_begin
+
+       ! Note that for this model we need a bigger wrk array
+       ! this is taken care of in m_work.f90
+
 
     case default
        write(out,*) 'M_LES_INIT: invalid value of les_model:',les_model
@@ -182,6 +214,7 @@ contains
   subroutine m_les_begin
 
     use x_fftw
+    use m_filter_xfftw
     implicit none
 
     ! if les_model=0, do not initialize anything and return
@@ -244,11 +277,38 @@ contains
 
     case(4)
        write(out,*) "-- Dynamic Structure model with algebraic model for dissipation"
-       write(out,*) "-- Initializing k_sgs = 0.1"
+       write(out,*) "-- Initializing k_sgs = 0.2"
        call flush(out)
 
-       if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.1d0 * real(nxyz_all)
+       if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.2d0 * real(nxyz_all)
 
+       ! initializing filtering arrays
+       ! because filter_xfftw_init uses fields(1) as a temporary array, we need
+       ! to store it before we initialize the filter, and the restore it to
+       ! what it was.
+       wrk(:,:,:,LBOUND(wrk,4)) = fields(:,:,:,LBOUND(fields,4))
+       call filter_xfftw_init
+       fields(:,:,:,LBOUND(fields,4)) = wrk(:,:,:,LBOUND(wrk,4))
+
+    case(5)
+       write(out,*) "-- Dynamic Structure model with lag-model for dissipation"
+       write(out,*) "-- Initializing k_sgs = 0.5"
+       call flush(out)
+
+       if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.5d0 * real(nxyz_all)
+       ! definition of eps*T_eps = 0, B*T_B = k_sgs
+!!$       if (iammaster) fields(1,1,1,3+n_scalars+2) = fields(1,1,1,3+n_scalars+1)
+!!$       if (iammaster) fields(1,1,1,3+n_scalars+3) = 0.d0
+       if (iammaster) fields(1,1,1,3+n_scalars+2) = fields(1,1,1,3+n_scalars+1)
+       if (iammaster) fields(1,1,1,3+n_scalars+3) = 0.d0*fields(1,1,1,3+n_scalars+1)
+
+       ! initializing filtering arrays
+       ! because filter_xfftw_init uses fields(1) as a temporary array, we need
+       ! to store it before we initialize the filter, and the restore it to
+       ! what it was.
+       wrk(:,:,:,LBOUND(wrk,4)) = fields(:,:,:,LBOUND(fields,4))
+       call filter_xfftw_init
+       fields(:,:,:,LBOUND(fields,4)) = wrk(:,:,:,LBOUND(wrk,4))
 
     case default
        write(out,*) "M_LES_BEGIN: invalid value of les_model: ",les_model
@@ -270,6 +330,11 @@ contains
     select case (les_model)
     case(1:3)
        call les_rhsv_turb_visc
+    case(4:5)
+       ! Dynamic Structure model
+       ! add the velocity sources to RHS for velocitieis
+       wrk(:,:,:,1:3) = wrk(:,:,:,1:3) + vel_source_les(:,:,:,1:3)
+
     case default
        write(out,*) 'LES_RHS_VELOCITY: invalid value of les_model:',les_model
        call flush(out)
@@ -284,13 +349,15 @@ contains
 !  Adding LES sources to the RHS of scalars
 !================================================================================
   subroutine les_rhs_scalars
+    use x_fftw
     implicit none
 
     integer :: n
 
     if(iammaster .and. mod(itime,iprint1)==0) then
        open(999,file='les.gp', position='append')
-       write(999,"(10e15.6)") time, energy, production, B, dissipation
+       if (n_les>0) energy = fields(1,1,1,3+n_scalars+1) / real(nxyz_all)
+       write(999,"(i6,x,10e15.6)") itime, time, energy, production, B, dissipation
        close(999)
     end if
 
@@ -298,16 +365,18 @@ contains
     case(1)
        call m_les_rhss_turb_visc
     case(2)
+       ! -- Dynamic Localization model with algebraic model for dissipation
        call m_les_k_src_dlm
        call m_les_k_diss_algebraic
        call m_les_rhss_turb_visc
     case(3)
+       ! -- Dynamic Localization model with lag-model for dissipation
        call m_les_k_src_dlm
        call m_les_lag_model_sources
        call m_les_rhss_turb_visc
-    case(4)
-       call m_les_dstm_vel_k_sources
-       call m_les_k_diss_algebraic
+    case(4) 
+       ! -- Dynamic Structure Model with algebraic model for dissipation
+       ! First taking care of the passive scalars (don't have them for now)
        if (n_scalars .gt. 0) then
           write(out,*) "*** Current version of the code cannot transport scalars"
           write(out,*) "*** with the les_model=4 (Dynamic Structure Model)"
@@ -315,6 +384,45 @@ contains
           call flush(out)
           call my_exit(-1)
        end if
+       ! now taking care of the LES-related scalars
+       ! for the Dynamic Structure model, k-equation has turbulent viscosity
+       ! so need to add that term.
+
+       call m_les_dstm_vel_k_sources
+       call m_les_k_diss_algebraic
+       call m_les_rhss_turb_visc
+
+    case(5) 
+       ! -- Dynamic Structure Model with lag-model for dissipation
+       ! First taking care of the passive scalars (don't have them for now)
+       if (n_scalars .gt. 0) then
+          write(out,*) "*** Current version of the code cannot transport scalars"
+          write(out,*) "*** with the les_model=5 (Dynamic Structure Model)"
+          write(out,*) "Please specify a different LES model."
+          call flush(out)
+          call my_exit(-1)
+       end if
+       ! now taking care of the LES-related scalars
+       ! for the Dynamic Structure model, k-equation has turbulent viscosity
+       ! so need to add that term.
+
+       ! getting sources for velocities and production for k_s and B
+       call m_les_dstm_vel_k_sources  
+       ! getting |S|^2 and putting it into wrk0 (for the timescale for B)
+       call m_les_k_src_dlm
+       ! getting the sources and sinks for (BT) and (eps T) and a sink for k_s
+       call m_les_lag_model_sources
+       ! diffusing k_s, (BT) and (epsilon*T) with turbulent viscosity
+       call m_les_rhss_turb_visc
+!!$! --------------------------------------------------
+!!$        wrk(:,:,:,0) = wrk(:,:,:,3+n_scalars+1)
+!!$        call xFFT3d(-1,0)
+!!$        tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,0)
+!!$        fname = 'rhskt'
+!!$        call write_tmp4
+!!$        stop
+!!$! --------------------------------------------------
+
     case default
        write(out,*) 'LES_RHS_SCALARS: invalid value of les_model:',les_model
        call flush(out)
@@ -527,10 +635,13 @@ contains
     implicit none
 
     select case (les_model)
-    case(1)
+    case(1,4:5)
+       if (mod(itime,iprint1).eq.0) write(out,*) "Smagorinsky viscosity"
+       call flush(out)
        call les_get_turb_visc_smag
 
     case(2:3)
+
        call les_get_turb_visc_dlm
 
     case default
@@ -631,6 +742,8 @@ contains
 
     use x_fftw
     implicit none
+    integer :: i,j,k
+    real*8  :: rkmax2, wmag2
 
 !!$    real*8 :: C_k = 0.05d0 ! This is take from Yoshizawa and Horiuti (1985)
     real*8 :: C_k = 0.1d0 ! This is what works for this code.  Dunno why...
@@ -640,6 +753,19 @@ contains
 !!$    call flush(out)
 
     wrk(:,:,:,0) = fields(:,:,:,3+n_scalars+1)
+
+![[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[
+    rkmax2 = real(kmax**2,8)
+    do k = 1,nz
+       do j = 1,ny
+          do i = 1,nx+2
+             wmag2 = akx(i)**2 + aky(k)**2 + akz(j)**2
+             if (wmag2 .gt. rkmax2) wrk(i,j,k,0) = zip
+          end do
+       end do
+    end do
+!]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]
+
     call xFFT3d(-1,0)
 
     ! C alculating the minimum value of k_sgs.  If it's less that zero, clip it
@@ -656,6 +782,19 @@ contains
     end if
 
     turb_visc(1:nx,1:ny,1:nz) = C_k * les_delta * sqrt(wrk(1:nx,1:ny,1:nz,0))
+
+![[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[
+    if (mod(itime,iwrite4).eq.0) then
+       tmp4 = turb_visc
+       write(fname,"('nut1.',i6.6)") itime
+       call write_tmp4
+
+       tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,0)
+       write(fname,"('k1.',i6.6)") itime
+       call write_tmp4
+
+    end if
+!]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]
 
     ! If the minimum of k_sgs is less than zero, we want to clip it
     ! mercilessly (already done in wrk0) then put it back in Fourier space
@@ -741,6 +880,8 @@ contains
 !================================================================================
 !  Subroutine that calculates the source for k_sgs:   - tau_{ij} S_{ij} 
 !  for the case of Dynamic Localization Model (DLM)
+!
+!  If called while les_model=5, then just calculate |S|^2 and put it into wrk0
 !================================================================================
   subroutine m_les_k_src_dlm
 
@@ -828,6 +969,12 @@ contains
     ! NOTE: We do not touch wrk0 because we want to preserve S_{ij}S_{ij}
     ! for other routines.
     wrk(:,:,:,0) = two * wrk(:,:,:,0)
+
+    ! if the subroutine is called with les_model=5, then the only part needed is the
+    ! calculation of the |S|^2 in wrk0.  So now we check if les_model=5 and exit of it is
+    if (les_model.eq.5) return
+
+    ! continue calculating the transfer term
     wrk(:,:,:,n1) = wrk(:,:,:,0)
     wrk(1:nx,1:ny,1:nz,n1) = wrk(1:nx,1:ny,1:nz,n1) * turb_visc(1:nx,1:ny,1:nz)
 
@@ -918,6 +1065,10 @@ contains
     end do
 !!$    wrk(:,:,:,n_k) = wrk(:,:,:,n_k) - wrk(:,:,:,0)
 
+    ! saving dissipation for output
+    if (iammaster) dissipation = wrk(1,1,1,0) / real(nxyz_all)
+
+
     return
   end subroutine m_les_k_diss_algebraic
 
@@ -934,11 +1085,11 @@ contains
     use x_fftw
 
     implicit none
-    integer :: n_k, n1, n2, i, j, k
+    integer :: nk, n1, n2, i, j, k
 
 
     ! the "field number" for k_sgs
-    n_k = 3 + n_scalars + 1
+    nk = 3 + n_scalars + 1
     ! the numbers for two work arrays
     n1 = 3 + n_scalars + n_les + 1
     n2 = 3 + n_scalars + n_les + 2
@@ -946,7 +1097,7 @@ contains
     ! Getting B from (B T_B).
     ! Currently T_B = 1/|S|, and |S|^2 is contained in wrk0 from m_les_k_src_dlm.
     ! - getting (B T_B) to real space
-    wrk(:,:,:,n1) = fields(:,:,:,n_k+1)
+    wrk(:,:,:,n1) = fields(:,:,:,nk+1)
     call xFFT3d(-1,n1)
     ! - Dividing by T_B (multiplying by |S|)
     wrk(:,:,:,n1) = wrk(:,:,:,n1) * sqrt(wrk(:,:,:,0))
@@ -954,7 +1105,7 @@ contains
     call xFFT3d(1,n1)
 
     ! Getting epsilon from (epsilon T_epsilon)
-    wrk(:,:,:,n2) = fields(:,:,:,n_k+2)
+    wrk(:,:,:,n2) = fields(:,:,:,nk+2)
     call xFFT3d(-1,n2)
     ! Currently T_epsilon = C_T Delta^2 / epsilon^(1/3).
     ! Solving for epsilon:
@@ -977,14 +1128,15 @@ contains
              if (ialias(i,j,k) .eq. 0) then
 
                 ! updating the RHS for k_sgs (subtracting epsilon)
-                wrk(i,j,k,n_k) = wrk(i,j,k,n_k) - wrk(i,j,k,n2) 
+                wrk(i,j,k,nk) = wrk(i,j,k,nk) - wrk(i,j,k,n2) 
 
                 ! updating the RHS for B (adding Pi and subtracting B)
                 ! note that Pi is already added in subroutine m_les_k_src_dlm
-                wrk(i,j,k,n_k+1) = wrk(i,j,k,n_k+1) - wrk(i,j,k,n1)
+                ! or m_les_dstm_vel_k_sources
+                wrk(i,j,k,nk+1) = wrk(i,j,k,nk+1) - wrk(i,j,k,n1)
 
                 ! updating the RHS for epsilon (adding B and subtracting epsilon)
-                wrk(i,j,k,n_k+2) = wrk(i,j,k,n_k+2) + wrk(i,j,k,n1) - wrk(i,j,k,n2)
+                wrk(i,j,k,nk+2) = wrk(i,j,k,nk+2) + wrk(i,j,k,n1) - wrk(i,j,k,n2)
 
              end if
           end do
@@ -1010,57 +1162,267 @@ contains
 
     use x_fftw
     use m_filter_xfftw
-    
+
     implicit none
-    integer :: n(5), nn, i, j, k
+    real*8 :: fac, rtmp1, rtmp2
+    real*8 :: fs, fs1, bs, bs1
+    integer :: n1, n2, n3, n4, n5
+    integer :: nn, i, j, k, ii, jj, kk, nk
+    character :: dir_i, dir_j
+    logical :: diagonal
 
     ! there are FIVE working arrays that we can use: wrk0 and
     ! wrk(3+n_scalars+n_les+1....+4).  The array n(:) will contain the indicies.
     ! in comments we'll refer to the arrays as wrk1...5
-    n(1) = 0;
-    n(2) = 3+n_scalars+n_les+1
-    n(3) = 3+n_scalars+n_les+2
-    n(4) = 3+n_scalars+n_les+3
-    n(5) = 3+n_scalars+n_les+4
+    n1 = 0;
+    n2 = 3 + n_scalars + n_les + 1
+    n3 = 3 + n_scalars + n_les + 2
+    n4 = 3 + n_scalars + n_les + 3
+    n5 = 3 + n_scalars + n_les + 4
+    nk = 3 + n_scalars + 1
 
-    ! converting k_sgs to x-space and placing it in wrk1
-    wrk(:,:,:,n(1)) = fields(:,:,:,3+n_scalars+1)
-    call xFFT3d(-1,n(1))
+    ! converting k_sgs to x-space and placing it in wrk1 
+    wrk(:,:,:,n1) = fields(:,:,:,nk)
+
+    ! we need to insure that the values of k_sgs are non-negative.
+    ! this is done via additional filtering 
+    call filter_xfftw(n1)
+
+    call xFFT3d(-1,n1)
+
+    ! compute the minimum value of k
+    rtmp1 = minval(wrk(1:nx,:,:,n1))
+    count = 1
+    call MPI_REDUCE(rtmp1,rtmp2,count,MPI_REAL8,MPI_MIN,0,MPI_COMM_TASK,mpi_err)
+    if (myid.eq.0 .and. mod(itime,iwrite4).eq.0) then
+       write(699,"(i6,x,e15.6)") itime, rtmp2
+       call flush(699)
+    end if
+
+
 
     ! Assembling first part of L_ii in wrk2
-    wrk(:,:,:,n(3)) = fields(:,:,:,1)
-    wrk(:,:,:,n(4)) = fields(:,:,:,2)
-    wrk(:,:,:,n(5)) = fields(:,:,:,3)
-    call xFFT3d(-1,n(3))
-    call xFFT3d(-1,n(4))
-    call xFFT3d(-1,n(5))
-    wrk(:,:,:,n(2)) = wrk(:,:,:,n(3))**2 + wrk(:,:,:,n(4))**2 + wrk(:,:,:,n(5))**2
-    call filter_xfftw(n(2))
+    wrk(:,:,:,n3) = fields(:,:,:,1)
+    wrk(:,:,:,n4) = fields(:,:,:,2)
+    wrk(:,:,:,n5) = fields(:,:,:,3)
+    call xFFT3d(-1,n3)
+    call xFFT3d(-1,n4)
+    call xFFT3d(-1,n5)
+    wrk(:,:,:,n2) = wrk(:,:,:,n3)**2 + wrk(:,:,:,n4)**2 + wrk(:,:,:,n5)**2
+    call xFFT3d(1,n2)
+    call filter_xfftw(n2)
+    call xFFT3d(-1,n2)
 
-    ! Putting u, v, w in wrk1..3 and filtering them
-    wrk(:,:,:,n(3)) = fields(:,:,:,1)
-    wrk(:,:,:,n(4)) = fields(:,:,:,2)
-    wrk(:,:,:,n(5)) = fields(:,:,:,3)
-    call filter_xfftw(n(3))
-    call filter_xfftw(n(4))
-    call filter_xfftw(n(5))
-    call xFFT3d(-1,n(3))
-    call xFFT3d(-1,n(4))
-    call xFFT3d(-1,n(5))
+
+    ! Putting u, v, w in wrk3..5 and filtering them
+    wrk(:,:,:,n3) = fields(:,:,:,1)
+    wrk(:,:,:,n4) = fields(:,:,:,2)
+    wrk(:,:,:,n5) = fields(:,:,:,3)
+    call filter_xfftw(n3)
+    call filter_xfftw(n4)
+    call filter_xfftw(n5)
+    call xFFT3d(-1,n3)
+    call xFFT3d(-1,n4)
+    call xFFT3d(-1,n5)
 
     ! Now subtracting the second part of L_ii into wrk2.
-    wrk(:,:,:,n(2)) = wrk(:,:,:,n(2)) &
-         - wrk(:,:,:,n(3))**2 - wrk(:,:,:,n(4))**2 - wrk(:,:,:,n(5))**2
+    wrk(:,:,:,n2) = wrk(:,:,:,n2) &
+         - wrk(:,:,:,n3)**2 - wrk(:,:,:,n4)**2 - wrk(:,:,:,n5)**2
+
+
+
+    if (mod(itime,iwrite4).eq.0) then
+       tmp4(1:nx,:,:) = wrk(1:nx,:,:,n1)
+       write(fname,"('k.',i6.6)") itime
+       call write_tmp4
+       tmp4(1:nx,:,:) = wrk(1:nx,:,:,n2)
+       write(fname,"('L.',i6.6)") itime
+       call write_tmp4
+    end if
+
 
     ! now put the scaling factor of the DStM in wrk1
     ! the scaling factor is 2*k/L_ii
-    wrk(:,:,:,n(1)) = two * wrk(:,:,:,n(1))  / max(wrk(:,:,:,n(2)),1.d-15)
+    wrk(:,:,:,n1) = two * wrk(:,:,:,n1)  / max(wrk(:,:,:,n2),1.d-15)
+
+    if (mod(itime,iwrite4).eq.0) then
+       tmp4(1:nx,:,:) = wrk(1:nx,:,:,n1)
+       write(fname,"('F.',i6.6)") itime
+       call write_tmp4
+    end if
 
 
 
+    ! now going over tau_{ij} and S_{ij}, term by term.
+    ! cycling over i and j.  I know this is inefficient but this results in
+    ! the minimal amount of code to debud and I don't have much time to
+    ! optimize the performance right now.
+
+    ! when calculated, the LES source/sink terms for velocities are placed in
+    ! the special array vel_source_les(:,:,:,:)
+    vel_source_les = zip
+
+    ! production for output
+    if (iammaster) production = zip
+
+    ! forward/backward scatter
+    fs = zip
+    fs1 = zip
+    bs = zip
+    bs1 = zip
+
+    ! cycling over i and j
+    direction_i: do i = 1,3
+
+       if (i.eq.1) dir_i = 'x'
+       if (i.eq.2) dir_i = 'y'
+       if (i.eq.3) dir_i = 'z'
+
+       direction_j: do j = 1,3
+
+          if (j.eq.1) dir_j = 'x'
+          if (j.eq.2) dir_j = 'y'
+          if (j.eq.3) dir_j = 'z'
+
+          wrk(:,:,:,n2) = fields(:,:,:,i)
+          wrk(:,:,:,n3) = fields(:,:,:,j)
+          wrk(:,:,:,n4) = fields(:,:,:,i)
+          wrk(:,:,:,n5) = fields(:,:,:,j)
+          call xFFT3d(-1,n2)
+          call xFFT3d(-1,n3)
+          call filter_xfftw(n4)
+          call filter_xfftw(n5)
+          call xFFT3d(-1,n4)
+          call xFFT3d(-1,n5)
+
+          ! hat(u_i u_j) -> wrk2
+          wrk(:,:,:,n2) = wrk(:,:,:,n2) * wrk(:,:,:,n3)           
+          call xFFT3d(1,n2)
+          call filter_xfftw(n2)
+          call xFFT3d(-1,n2)
+
+          ! L_{ij} -> wrk2
+          wrk(:,:,:,n2) = wrk(:,:,:,n2) - wrk(:,:,:,n4) * wrk(:,:,:,n5)
+
+          ! tau_{ij} -> wrk2
+          wrk(:,:,:,n2) = wrk(:,:,:,n2) * wrk(:,:,:,n1)
+
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG +
+          ! writing out tau_{ij}
+          if (mod(itime,iwrite4).eq.0) then
+             tmp4(1:nx,:,:) = wrk(1:nx,:,:,n2)
+             write(fname,"('tau',i1,i1,'.',i6.6)") i,j,itime
+             call write_tmp4
+          end if
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG -
+
+
+          ! The source in k-equation is really - du_i/dx_j * tau_{ij} 
+          wrk(:,:,:,n3) = fields(:,:,:,i)
+          call x_derivative(n3,dir_j,n3)
+          call xFFT3d(-1,n3)
+          wrk(:,:,:,n5) = - wrk(:,:,:,n3) * wrk(:,:,:,n2)
+
+          ! converting both tau_{ij} and souce for k_sgs to Fourier space
+          call xFFT3d(1,n2)
+          call xFFT3d(1,n5)
+
+          ! calculating source for velocities u_i and u_j:
+          ! for u_i : - d/dx_j tau_{ij} -> wrk3
+!!$          ! for u_j : - d/dx_i tau_{ij} -> wrk4
+          wrk(:,:,:,n3) = - wrk(:,:,:,n2)
+!!$          wrk(:,:,:,n4) = - wrk(:,:,:,n2)
+          call x_derivative(n3,dir_j,n3)
+!!$          call x_derivative(n4,dir_i,n4)
+
+          ! now adding the sources to the RHSs
+          ! adding only the wavenumbers that do not produce aliasing
+          adding_sources: do kk = 1,nz
+             do jj = 1,ny
+                do ii = 1,nx+2
+                   if (ialias(ii,jj,kk).eq.0) then
+
+                      ! velocity sources
+                      vel_source_les(ii,jj,kk,i) = vel_source_les(ii,jj,kk,i) + wrk(ii,jj,kk,n3)
+                      ! k_source
+                      wrk(ii,jj,kk,nk) = wrk(ii,jj,kk,nk) + wrk(ii,jj,kk,n5)
+                      ! B-source (for model #5)
+                      if (les_model.eq.5) then
+                         wrk(ii,jj,kk,nk+1) = wrk(ii,jj,kk,nk+1) + wrk(ii,jj,kk,n5)
+                      end if
+
+!!$                      ! if i.ne.j that is, we need to add some more stuff
+!!$                      if (j > i) then
+!!$                         ! velocity sources
+!!$                         vel_source_les(ii,jj,kk,j) = vel_source_les(ii,jj,kk,j) + wrk(ii,jj,kk,n4)
+!!$                         ! k_source
+!!$                         wrk(ii,jj,kk,nk) = wrk(ii,jj,kk,nk) + wrk(ii,jj,kk,n5)
+!!$                         ! B-source (for model #5)
+!!$                         if (les_model.eq.5) then
+!!$                            wrk(ii,jj,kk,nk+1) = wrk(ii,jj,kk,nk+1) + wrk(ii,jj,kk,n5)
+!!$                         end if
+!!$                      end if
+
+                   end if
+                end do
+             end do
+          end do adding_sources
+
+!!$          if (iammaster) then
+!!$             write(720+3*(j-1)+i,"(i6,x,10e15.6)") itime, vel_source_les(1,1,1,:)
+!!$             call flush(720+3*(j-1)+i)
+!!$          end if
+
+
+          ! saving production for output
+          if (iammaster) production = production + wrk(1,1,1,n5) / real(nxyz_all)
+!!$          if (iammaster .and. j>i) production = production + wrk(1,1,1,n5) / real(nxyz_all)
+
+          ! doing the budget: counting the positive and negative production 
+          ! (i.e., forward and backward scatter)
+          call xFFT3d(-1,n5)
+          do kk=1,nz
+             do jj = 1,ny
+                do ii = 1,nx
+                   if (wrk(ii,jj,kk,n5) .gt. zip) then
+                      fs1 = fs1 + wrk(ii,jj,kk,n5)
+                   else
+                      bs1 = bs1 + wrk(ii,jj,kk,n5)
+                   end if
+                end do
+             end do
+          end do
+
+
+!!$! --------------------------------------------------
+!!$        wrk(:,:,:,n5) = wrk(:,:,:,3+n_scalars+1)
+!!$        call xFFT3d(-1,n5)
+!!$        tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,n5)
+!!$        write(fname,"('source',i1,i1)") i,j
+!!$        call write_tmp4
+!!$! --------------------------------------------------
+
+
+
+       end do direction_j
+    end do direction_i
+
+    ! writing out int he file fort.698 forward scatter, back scatter and total production of K
+    count = 1
+    call MPI_REDUCE(fs1,fs,count,MPI_REAL8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
+    call MPI_REDUCE(bs1,bs,count,MPI_REAL8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
+    if (myid.eq.0 .and. mod(itime,iprint1).eq.0) then
+       fs = fs / real(nxyz_all,8)
+       bs = bs / real(nxyz_all,8)
+       write(698,"(i6,x,3e15.6)") itime, fs, bs, production
+       call flush(698)
+    end if
 
 
   end subroutine m_les_dstm_vel_k_sources
 
+!================================================================================
+!================================================================================
+!================================================================================
 
 end module m_les
