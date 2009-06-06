@@ -43,9 +43,8 @@ program x_code
   write(out,*) "IN THE PROGRAM."
   call flush(out)
 
-
   ! initializing the random number generator
-!  call rand_knuth_init
+  ! call rand_knuth_init
 
   ! getting the wallclock runlimit for the job
   call get_job_runlimit
