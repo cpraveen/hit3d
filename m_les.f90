@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-06-10 11:40:24 (chumakov)>
+!  Time-stamp: <2009-06-10 12:21:39 (chumakov)>
 !================================================================================
 module m_les
 
@@ -512,10 +512,10 @@ contains
        if (n_les>0) energy = fields(1,1,1,3+n_scalars+1) / real(nxyz_all)
        write(999,"(i6,x,10e15.6)") itime, time, energy, production, B, dissipation
        close(999)
-       B = zip
-       production = zip
-       dissipation = zip
     end if
+    B = zip
+    production = zip
+    dissipation = zip
 
     ! note that the turbulent viscosity itself is computed in rhs_scalars.f90
     ! here we only modify the RHSs for scalars in case we're running LES
