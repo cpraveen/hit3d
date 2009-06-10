@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-06-05 17:50:16 (chumakov)>
+!  Time-stamp: <2009-06-10 11:08:51 (chumakov)>
 !================================================================================
 module m_les
 
@@ -512,6 +512,9 @@ contains
        if (n_les>0) energy = fields(1,1,1,3+n_scalars+1) / real(nxyz_all)
        write(999,"(i6,x,10e15.6)") itime, time, energy, production, B, dissipation
        close(999)
+       production = zip
+       B = zip
+       dissipation = zip
     end if
 
     ! note that the turbulent viscosity itself is computed in rhs_scalars.f90
@@ -601,6 +604,8 @@ contains
        ! Mixed model (Dynamic Structure model + a fraction of Dynamic Localization model)
        ! The fraction is given by the constant C_mixed, which is read from the file
        ! This is taken care of in les_get_turb_visc
+
+       ! Dissipation is via lag model
 
        ! First taking care of the passive scalars (don't have them for now)
        if (n_scalars .gt. 0) then
@@ -1210,9 +1215,8 @@ contains
     ! the RHS for k_sgs is supposed to be in wrk(3+n_scalars+1)
     k_n = 3 + n_scalars + 1
 
-    ! saving the mean energy transfer to be output later
-    if (iammaster) energy = fields(1,1,1,k_n) / real(nxyz_all)
-    if (iammaster) production = wrk(1,1,1,n1) / real(nxyz_all)
+    ! saving the energy transfer to be output later
+    if (iammaster) production = production + wrk(1,1,1,n1) / real(nxyz_all)
 
     ! adding the source for k_sgs
     do k = 1, nz
@@ -1293,7 +1297,7 @@ contains
 !!$    wrk(:,:,:,n_k) = wrk(:,:,:,n_k) - wrk(:,:,:,0)
 
     ! saving dissipation for output
-    if (iammaster) dissipation = wrk(1,1,1,0) / real(nxyz_all)
+    if (iammaster) dissipation = dissipation + wrk(1,1,1,0) / real(nxyz_all)
 
 
     return
@@ -1341,8 +1345,8 @@ contains
     call xFFT3d(1,n2)
 
     ! saving the mean energy, B and dissipation for output later
-    if (iammaster) B = wrk(1,1,1,n1) / real(nxyz_all)
-    if (iammaster) dissipation = wrk(1,1,1,n2) / real(nxyz_all)
+    if (iammaster) B = B + wrk(1,1,1,n1) / real(nxyz_all)
+    if (iammaster) dissipation = dissipation + wrk(1,1,1,n2) / real(nxyz_all)
 
 
     ! Now we have B and epsilon, so we can update the RHS for k, B and epsilon
@@ -1496,9 +1500,6 @@ contains
 
     k_source = zip
 
-    ! production for output
-    if (iammaster) production = zip
-
     ! forward/backward scatter
     fs = zip
     fs1 = zip
@@ -1646,14 +1647,14 @@ contains
        end do direction_j
     end do direction_i
 
-    ! writing out int he file fort.698 forward scatter, back scatter and total production of K
+    ! writing out int he file fort.698 forward scatter, back scatter produced by the DSTM
     count = 1
     call MPI_REDUCE(fs1,fs,count,MPI_REAL8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
     call MPI_REDUCE(bs1,bs,count,MPI_REAL8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
     if (myid.eq.0 .and. mod(itime,iprint1).eq.0) then
        fs = fs / real(nxyz_all,8)
        bs = bs / real(nxyz_all,8)
-       write(698,"(i6,x,3e15.6)") itime, fs, bs, production
+       write(698,"(i6,x,3e15.6)") itime, fs, bs
        call flush(698)
     end if
 
