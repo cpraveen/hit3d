@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-06-10 11:08:51 (chumakov)>
+!  Time-stamp: <2009-06-10 11:40:24 (chumakov)>
 !================================================================================
 module m_les
 
@@ -512,8 +512,8 @@ contains
        if (n_les>0) energy = fields(1,1,1,3+n_scalars+1) / real(nxyz_all)
        write(999,"(i6,x,10e15.6)") itime, time, energy, production, B, dissipation
        close(999)
-       production = zip
        B = zip
+       production = zip
        dissipation = zip
     end if
 
@@ -1344,7 +1344,7 @@ contains
     wrk(:,:,:,n2) = wrk(:,:,:,n2)**1.5D0 / (les_delta * C_T**1.5d0)
     call xFFT3d(1,n2)
 
-    ! saving the mean energy, B and dissipation for output later
+    ! saving B and dissipation for output later
     if (iammaster) B = B + wrk(1,1,1,n1) / real(nxyz_all)
     if (iammaster) dissipation = dissipation + wrk(1,1,1,n2) / real(nxyz_all)
 
@@ -1406,8 +1406,6 @@ contains
     ! temporary array to store the complete k-source and write it out
     real*4, allocatable :: k_source(:,:,:)
     allocate(k_source(1:nx,1:ny,1:nz))
-    k_source = zip
-
 
     ! there are FIVE working arrays that we can use: wrk0 and
     ! wrk(3+n_scalars+n_les+1....+4).  The array n(:) will contain the indicies.
