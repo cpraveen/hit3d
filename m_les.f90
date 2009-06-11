@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-06-10 12:21:39 (chumakov)>
+!  Time-stamp: <2009-06-10 16:16:23 (chumakov)>
 !================================================================================
 module m_les
 
@@ -862,7 +862,7 @@ contains
 
     case(6)
 
-       call les_get_turb_visc_dlm
+       call les_get_turb_visc_smag
        ! making turbulent viscosity a fraction of what it is since this is a
        ! mixed model
        turb_visc = C_mixed * turb_visc
@@ -1004,6 +1004,12 @@ contains
     count = 1
     call MPI_REDUCE(sctmp1,sctmp,count,MPI_REAL8,MPI_MIN,0,MPI_COMM_TASK,mpi_err)
     call MPI_BCAST(sctmp,count,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
+
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG+
+    if (iammaster) write(697,"(i6,x,e15.6)") itime, sctmp
+    if (iammaster .and. mod(itime,10).eq.0) call flush(697)
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG-
+
     if (sctmp.lt.zip) then
        ! write(out,*) 'LES_GET_TURB_VISC_DLM: minval of k is less than 0:',sctmp
        ! call flush(out)
@@ -1207,6 +1213,17 @@ contains
     ! continue calculating the transfer term
     wrk(:,:,:,n1) = wrk(:,:,:,0)
     wrk(1:nx,1:ny,1:nz,n1) = wrk(1:nx,1:ny,1:nz,n1) * turb_visc(1:nx,1:ny,1:nz)
+
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>DEBUG+
+    ! writing out the energy transfer due to the viscosity
+    if (mod(itime,iwrite4).eq.0) then
+       tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,n1)
+       write(fname,"('pi_nu.',i6.6)") itime
+       call write_tmp4
+    end if
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>DEBUG-
+
+
 
     ! convert the transfer term to Fourier space
     call xFFT3d(1,n1)
@@ -1420,10 +1437,6 @@ contains
     ! converting k_sgs to x-space and placing it in wrk1 
     wrk(:,:,:,n1) = fields(:,:,:,nk)
 
-    ! we need to insure that the values of k_sgs are non-negative.
-    ! this is done via additional filtering 
-    call filter_xfftw(n1)
-
     call xFFT3d(-1,n1)
 
 !<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG+
@@ -1479,7 +1492,16 @@ contains
 
     ! now put the scaling factor of the DStM in wrk1
     ! the scaling factor is 2*k/L_ii
-    wrk(:,:,:,n1) = two * wrk(:,:,:,n1)  / max(wrk(:,:,:,n2),1.d-15)
+!wrk(:,:,:,n1) = two * wrk(:,:,:,n1)  / max(wrk(:,:,:,n2),1.d-15)
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG+
+    ! Now we want to clip the scaling factor to be non-negative.
+    ! This is done in order to make the energy transfer non-negative
+    ! at the places where k_sgs = 0.    basically we shut down the
+    ! energy transfer where k<=0 and let the diffusion work.
+    wrk(:,:,:,n1) = two * max(wrk(:,:,:,n1),zip)  / max(wrk(:,:,:,n2),1.d-15)
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG-
+
+
 
     if (mod(itime,iwrite4).eq.0) then
        tmp4(1:nx,:,:) = wrk(1:nx,:,:,n1)
