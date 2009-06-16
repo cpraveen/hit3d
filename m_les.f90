@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-06-15 19:03:51 (chumakov)>
+!  Time-stamp: <2009-06-16 15:09:40 (chumakov)>
 !================================================================================
 module m_les
 
@@ -329,10 +329,13 @@ contains
 
     case(2)
        write(out,*) "-- DLM model"
-       write(out,*) "-- Initializing k_sgs"
        call flush(out)
 
-       if (itime.eq.0) call m_les_dlm_k_init
+       if (itime.eq.0) then
+          write(out,*) "-- Initializing k_sgs"
+          call flush(out)
+          call m_les_dlm_k_init
+       end if
 
     case(3)
        write(out,*) "-- DLM model with lag model for dissipation"
@@ -388,10 +391,10 @@ contains
        fields(:,:,:,LBOUND(fields,4)) = wrk(:,:,:,LBOUND(wrk,4))
 
        if (itime.eq.0) then
-         write(out,*) "-- Initializing k_sgs = 0.2"
-         call flush(out)
+          write(out,*) "-- Initializing k_sgs = 0.2"
+          call flush(out)
 
-         if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.2d0 * real(nxyz_all)
+          if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.2d0 * real(nxyz_all)
        end if
 
     case(5)
@@ -409,13 +412,13 @@ contains
 
 
        if (itime.eq.0) then
-       write(out,*) "-- Initializing k_sgs = 0.5"
-       call flush(out)
+          write(out,*) "-- Initializing k_sgs = 0.5"
+          call flush(out)
 
-       if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.5d0 * real(nxyz_all)
-       ! definition of eps*T_eps = 0, B*T_B = k_sgs
-       if (iammaster) fields(1,1,1,3+n_scalars+2) = fields(1,1,1,3+n_scalars+1)
-       if (iammaster) fields(1,1,1,3+n_scalars+3) = 0.d0*fields(1,1,1,3+n_scalars+1)
+          if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.5d0 * real(nxyz_all)
+          ! definition of eps*T_eps = 0, B*T_B = k_sgs
+          if (iammaster) fields(1,1,1,3+n_scalars+2) = fields(1,1,1,3+n_scalars+1)
+          if (iammaster) fields(1,1,1,3+n_scalars+3) = 0.d0*fields(1,1,1,3+n_scalars+1)
        end if
 
     case(6)
@@ -436,15 +439,15 @@ contains
 
        if (itime.eq.0) then
 
-       write(out,*) "-- Initializing k_sgs = 0.5"
-       call flush(out)
+          write(out,*) "-- Initializing k_sgs = 0.5"
+          call flush(out)
 
-       if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.5d0 * real(nxyz_all)
+          if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.5d0 * real(nxyz_all)
 
        end if
 
     case(7)
-       write(out,*) "-- MIXED MODEL (Dynamic Structure model + DLM)"
+       write(out,*) "-- MIXED MODEL (Dynamic Structure model + Smagorinsky)"
        write(out,*) "               Lag-model for dissipation"
        call flush(out)
 
@@ -461,15 +464,15 @@ contains
 
        if (itime.eq.0) then
 
-       write(out,*) "-- Initializing k_sgs = 0.5, (BT)=k_s, (Eps T) = 0"
-       call flush(out)
+          write(out,*) "-- Initializing k_sgs = 0.5, (BT)=k_s, (Eps T) = 0"
+          call flush(out)
 
-       ! Initializing k
-       if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.5d0 * real(nxyz_all)
-       ! initializing (BT)
-       if (iammaster) fields(1,1,1,3+n_scalars+2) = fields(1,1,1,3+n_scalars+1)
-       ! initializing (eps T)
-       if (iammaster) fields(1,1,1,3+n_scalars+3) = 0.d0*fields(1,1,1,3+n_scalars+1)
+          ! Initializing k
+          if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.5d0 * real(nxyz_all)
+          ! initializing (BT)
+          if (iammaster) fields(1,1,1,3+n_scalars+2) = fields(1,1,1,3+n_scalars+1)
+          ! initializing (eps T)
+          if (iammaster) fields(1,1,1,3+n_scalars+3) = 0.d0*fields(1,1,1,3+n_scalars+1)
 
        end if
 
@@ -1523,7 +1526,7 @@ contains
     ! non-negative at the places where k_sgs = 0.    
     ! Basically we shut down the DSTM energy transfer where k<=0 
     ! and let the diffusion work.  
-    !
+!
     ! Formixed models, the viscous part of the model should provide
     ! enough positive energy transfer to over come the nagetiveness.
     ! Although that does not happen as fast as we want.
