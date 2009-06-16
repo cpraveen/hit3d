@@ -332,11 +332,13 @@ contains
        write(out,*) "-- Initializing k_sgs"
        call flush(out)
 
-       call m_les_dlm_k_init
+       if (itime.eq.0) call m_les_dlm_k_init
 
     case(3)
        write(out,*) "-- DLM model with lag model for dissipation"
        call flush(out)
+
+       if (itime.gt.0) return
 
        ! call m_les_dlm_k_init
 
@@ -375,10 +377,7 @@ contains
     case(4)
 
        write(out,*) "-- Dynamic Structure model with algebraic model for dissipation"
-       write(out,*) "-- Initializing k_sgs = 0.2"
        call flush(out)
-
-       if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.2d0 * real(nxyz_all)
 
        ! initializing filtering arrays
        ! because filter_xfftw_init uses fields(1) as a temporary array, we need
@@ -388,9 +387,28 @@ contains
        call filter_xfftw_init
        fields(:,:,:,LBOUND(fields,4)) = wrk(:,:,:,LBOUND(wrk,4))
 
+       if (itime.eq.0) then
+         write(out,*) "-- Initializing k_sgs = 0.2"
+         call flush(out)
+
+         if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.2d0 * real(nxyz_all)
+       end if
+
     case(5)
 
        write(out,*) "-- Dynamic Structure model with lag-model for dissipation"
+       call flush(out)
+
+       ! initializing filtering arrays
+       ! because filter_xfftw_init uses fields(1) as a temporary array, we need
+       ! to store it before we initialize the filter, and the restore it to
+       ! what it was.
+       wrk(:,:,:,LBOUND(wrk,4)) = fields(:,:,:,LBOUND(fields,4))
+       call filter_xfftw_init
+       fields(:,:,:,LBOUND(fields,4)) = wrk(:,:,:,LBOUND(wrk,4))
+
+
+       if (itime.eq.0) then
        write(out,*) "-- Initializing k_sgs = 0.5"
        call flush(out)
 
@@ -398,23 +416,13 @@ contains
        ! definition of eps*T_eps = 0, B*T_B = k_sgs
        if (iammaster) fields(1,1,1,3+n_scalars+2) = fields(1,1,1,3+n_scalars+1)
        if (iammaster) fields(1,1,1,3+n_scalars+3) = 0.d0*fields(1,1,1,3+n_scalars+1)
-
-       ! initializing filtering arrays
-       ! because filter_xfftw_init uses fields(1) as a temporary array, we need
-       ! to store it before we initialize the filter, and the restore it to
-       ! what it was.
-       wrk(:,:,:,LBOUND(wrk,4)) = fields(:,:,:,LBOUND(fields,4))
-       call filter_xfftw_init
-       fields(:,:,:,LBOUND(fields,4)) = wrk(:,:,:,LBOUND(wrk,4))
+       end if
 
     case(6)
 
        write(out,*) "-- MIXED MODEL (Dynamic Structure model + Smagorinsky)"
        write(out,*) "               Algebraic model for dissipation"
-       write(out,*) "-- Initializing k_sgs = 0.5"
        call flush(out)
-
-       if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.5d0 * real(nxyz_all)
 
        ! initializing filtering arrays
        ! because filter_xfftw_init uses fields(1) as a temporary array, we need
@@ -426,18 +434,19 @@ contains
        call filter_xfftw_init
        fields(:,:,:,LBOUND(fields,4)) = wrk(:,:,:,LBOUND(wrk,4))
 
+       if (itime.eq.0) then
+
+       write(out,*) "-- Initializing k_sgs = 0.5"
+       call flush(out)
+
+       if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.5d0 * real(nxyz_all)
+
+       end if
+
     case(7)
        write(out,*) "-- MIXED MODEL (Dynamic Structure model + DLM)"
        write(out,*) "               Lag-model for dissipation"
-       write(out,*) "-- Initializing k_sgs = 0.5, (BT)=k_s, (Eps T) = 0"
        call flush(out)
-
-       ! Initializing k
-       if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.5d0 * real(nxyz_all)
-       ! initializing (BT)
-       if (iammaster) fields(1,1,1,3+n_scalars+2) = fields(1,1,1,3+n_scalars+1)
-       ! initializing (eps T)
-       if (iammaster) fields(1,1,1,3+n_scalars+3) = 0.d0*fields(1,1,1,3+n_scalars+1)
 
        ! initializing filtering arrays
        ! because filter_xfftw_init uses fields(1) as a temporary array, we need
@@ -448,6 +457,21 @@ contains
        wrk(:,:,:,LBOUND(wrk,4)) = fields(:,:,:,LBOUND(fields,4))
        call filter_xfftw_init
        fields(:,:,:,LBOUND(fields,4)) = wrk(:,:,:,LBOUND(wrk,4))
+
+
+       if (itime.eq.0) then
+
+       write(out,*) "-- Initializing k_sgs = 0.5, (BT)=k_s, (Eps T) = 0"
+       call flush(out)
+
+       ! Initializing k
+       if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.5d0 * real(nxyz_all)
+       ! initializing (BT)
+       if (iammaster) fields(1,1,1,3+n_scalars+2) = fields(1,1,1,3+n_scalars+1)
+       ! initializing (eps T)
+       if (iammaster) fields(1,1,1,3+n_scalars+3) = 0.d0*fields(1,1,1,3+n_scalars+1)
+
+       end if
 
     case default
        write(out,*) "M_LES_BEGIN: invalid value of les_model: ",les_model
