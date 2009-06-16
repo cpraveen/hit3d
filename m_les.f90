@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-06-10 16:16:23 (chumakov)>
+!  Time-stamp: <2009-06-11 12:10:50 (chumakov)>
 !================================================================================
 module m_les
 
@@ -409,7 +409,7 @@ contains
 
     case(6)
 
-       write(out,*) "-- MIXED MODEL (Dynamic Structure model + DLM)"
+       write(out,*) "-- MIXED MODEL (Dynamic Structure model + Smagorinsky)"
        write(out,*) "               Algebraic model for dissipation"
        write(out,*) "-- Initializing k_sgs = 0.5"
        call flush(out)
@@ -1218,7 +1218,7 @@ contains
     ! writing out the energy transfer due to the viscosity
     if (mod(itime,iwrite4).eq.0) then
        tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,n1)
-       write(fname,"('pi_nu.',i6.6)") itime
+       write(fname,"('pi_nu.',i6.6) ") itime
        call write_tmp4
     end if
 !<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>DEBUG-
@@ -1495,9 +1495,14 @@ contains
 !wrk(:,:,:,n1) = two * wrk(:,:,:,n1)  / max(wrk(:,:,:,n2),1.d-15)
 !<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG+
     ! Now we want to clip the scaling factor to be non-negative.
-    ! This is done in order to make the energy transfer non-negative
-    ! at the places where k_sgs = 0.    basically we shut down the
-    ! energy transfer where k<=0 and let the diffusion work.
+    ! This is done in order to make the energy transfer from the DSTM 
+    ! non-negative at the places where k_sgs = 0.    
+    ! Basically we shut down the DSTM energy transfer where k<=0 
+    ! and let the diffusion work.  
+    !
+    ! Formixed models, the viscous part of the model should provide
+    ! enough positive energy transfer to over come the nagetiveness.
+    ! Although that does not happen as fast as we want.
     wrk(:,:,:,n1) = two * max(wrk(:,:,:,n1),zip)  / max(wrk(:,:,:,n2),1.d-15)
 !<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG-
 
