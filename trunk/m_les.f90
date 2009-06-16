@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-06-11 12:10:50 (chumakov)>
+!  Time-stamp: <2009-06-15 19:03:51 (chumakov)>
 !================================================================================
 module m_les
 
@@ -869,7 +869,7 @@ contains
 
     case(7)
 
-       call les_get_turb_visc_dlm
+       call les_get_turb_visc_smag
        ! making turbulent viscosity a fraction of what it is since this is a
        ! mixed model
        turb_visc = C_mixed * turb_visc
