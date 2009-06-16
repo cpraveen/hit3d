@@ -101,7 +101,7 @@ subroutine restart_read
      ! the root reads everything and sends to the slaves
      if (myid.eq.0) then
 
-        do n = 1, 3 + nums_read
+        do n = 1, 3 + nums_read + n_les
 
            ! first chunk belongs to the root
            read(91) (((fields(i,j,k,n),i=1,nx),j=1,ny),k=1,nz)
@@ -126,7 +126,7 @@ subroutine restart_read
      else
         ! the slaves receive and put it into ss array
 
-        do n = 1, 3 + nums_read
+        do n = 1, 3 + nums_read + n_les
 
            tag = (3+nums_read) * myid + n-1
            call MPI_RECV(fields(1,1,1,n),count,MPI_REAL8,0,tag,MPI_COMM_TASK,mpi_status,mpi_err)
@@ -182,7 +182,7 @@ subroutine restart_write
   if (int_scalars) nums_out = n_scalars
 
   ! first FFT everything to real space
-  wrk(:,:,:,1:3+nums_out) = fields(:,:,:,1:3+nums_out)
+  wrk(:,:,:,1:3+nums_out+n_les) = fields(:,:,:,1:3+nums_out+n_les)
 
 !!$!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 !!$  write(out,*) 'LEGACY CODE COMPATIBILITY: u,v,w <-> w,v,u'
@@ -202,10 +202,10 @@ subroutine restart_write
   ! if not the root, just send the stuff to the root
   if (myid.ne.0) then
 
-     do n = 1,3+nums_out
+     do n = 1 , 3 + nums_out + n_les
 
         wrk(:,:,:,0) = wrk(:,:,:,n)
-        tag = (3+nums_out) * myid + n-1
+        tag = (3+nums_out+n_les) * myid + n-1
         count = (nx+2) * ny * nz
         call MPI_ISEND(wrk(1,1,1,0),count,MPI_REAL8,0,tag,MPI_COMM_TASK,request,mpi_err)
 
@@ -229,14 +229,14 @@ subroutine restart_write
      write(91) int(nx,4),int(ny,4),int(nz*numprocs,4),int(nums_out,4),int(MST,4),TIME,DT
 
      ! then write the variables, one by one
-     do n = 1,3+nums_out
+     do n = 1 , 3 + nums_out + n_les
 
         ! first write the chunk from the root process
         wrk(:,:,:,0) = wrk(:,:,:,n)
         write(91) (((wrk(i,j,k,0),i=1,nx),j=1,ny),k=1,nz)
         ! then receive chinks of the same variable from each process and write it out
         do id_from=1,numprocs-1
-           tag = (3+nums_out) * id_from + n-1
+           tag = (3+nums_out+n_les) * id_from + n-1
            count = (nx+2) * ny * nz
            call MPI_RECV(wrk(1,1,1,0),count,MPI_REAL8,id_from,tag,MPI_COMM_TASK,mpi_status,mpi_err)
 
@@ -252,7 +252,7 @@ subroutine restart_write
 
   write(out,*) '------------------------------------------------'
   write(out,*) 'Restart file written (seq): '//trim(fname)
-  write(out,"(' Velocities and ',i3,' scalars')") nums_out 
+  write(out,"(' Velocities and ',i3,' scalars (incl. LES)')") nums_out+n_les
   write(out,"(' Restart file time = ',f15.10,i7)") time,itime
   write(out,*) '------------------------------------------------'
   call flush(out)
@@ -299,18 +299,10 @@ subroutine restart_write_parallel
   if (int_scalars) nums_out = n_scalars
 
   ! first FFT everything to real space
-  wrk(:,:,:,1:3+nums_out) = fields(:,:,:,1:3+nums_out)
+  wrk(:,:,:,1:3+nums_out+n_les) = fields(:,:,:,1:3+nums_out+n_les)
 
 
-!!$!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-!!$  write(out,*) 'LEGACY CODE COMPATIBILITY: uvw <-> wvu'
-!!$  call flush(out)
-!!$  wrk(:,:,:,1) = fields(:,:,:,3)
-!!$  wrk(:,:,:,2) = fields(:,:,:,2)
-!!$  wrk(:,:,:,3) = fields(:,:,:,1)
-!!$!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-!!$  wrk(:,:,:,3:3+nums_out) = fields(:,:,:,3:3+nums_out)
-
+  ! Converting all variables to X-space (decided not to)
 !  do n = 1,3+nums_out
 !     call xFFT3d(-1,n)
 !  end do
@@ -343,12 +335,13 @@ subroutine restart_write_parallel
   end if
 
   ! all nodes write their stuff into the file
-  writing_fields: do n = 1, 3 + nums_out
+  writing_fields: do n = 1, 3 + nums_out + n_les
 
      offset = 36 + (n-1)*nx*ny*nz_all*8 + myid*nx*ny*nz*8
      count = nx * ny * nz
      ! note that we want the data from the restart to have dimensions (nx,ny,nz),
-     ! while the fields array has fimensions (nx+2,ny,nz).  
+     ! while the fields array has fimensions (nx+2,ny,nz).
+     ! this is an artefact of the times when the code used to write the variables in real space.
      ! that is why we need to duplicate each field in the sctmp array first, and then
      ! write sctmp8 into the file with appropriate offset
 
@@ -364,7 +357,7 @@ subroutine restart_write_parallel
 
   write(out,*) '------------------------------------------------'
   write(out,*) 'Restart file written (par): '//trim(fname)
-  write(out,"(' Velocities and ',i3,' scalars')") nums_out 
+  write(out,"(' Velocities and ',i3,' scalars (including LES)')") nums_out+n_les
   write(out,"(' Restart file time = ',f15.10,i7)") time,itime
   write(out,*) '------------------------------------------------'
   call flush(out)
@@ -494,7 +487,7 @@ subroutine restart_read_parallel
   call MPI_INFO_CREATE(mpi_info, mpi_err)
   call MPI_FILE_OPEN(MPI_COMM_TASK,fname,MPI_MODE_RDONLY,mpi_info,fh,mpi_err)
 
-  reading_fields: do n = 1, 3 + nums_read
+  reading_fields: do n = 1, 3 + nums_read + n_les
 
      offset = 36 + (n-1)*nx*ny*nz_all*8 + myid*nx*ny*nz*8
      count = nx * ny * nz
