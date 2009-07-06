@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-06-16 15:09:40 (chumakov)>
+!  Time-stamp: <2009-07-06 11:08:51 (chumakov)>
 !================================================================================
 module m_les
 
@@ -173,6 +173,24 @@ contains
 
        ! Note that for this model we need a bigger wrk array
        ! this is taken care of in m_work.f90
+
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG+
+       inquire(file = 'c_t.in', exist = there)
+       if (.not.there) then
+          write(out,*) "Cannot find the file 'c_t.in', exiting"
+          call my_exit(-1)
+       end if
+       if (iammaster) then
+          open(900,file='c_t.in')
+          read(900,*) C_T
+          close(900)
+       end if
+       count = 1
+       call MPI_BCAST(C_T,count,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
+       write(out,*) "DSTM + lag model WITH C_T = ",C_T
+       call flush(out)
+
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG-
 
     case(6)
        ! Mixed model: Dynamic Structure + C-mixed * Dynamic Localization model
