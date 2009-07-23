@@ -221,12 +221,12 @@ program x_code
         end if
      end if stats
 
-           if (iammaster) then
-              ! plotting mean values of K and RHS of K
-              write(706,"(i6,x,10e15.6)") itime, time, fields(1,1,1,4)/real(nxyz_all), &
-                   wrk(1,1,1,4)/real(nxyz_all)
-              call flush(706)
-           end if
+!           if (iammaster) then
+!              ! plotting mean values of K and RHS of K
+!              write(706,"(i6,x,10e15.6)") itime, time, fields(1,1,1,4)/real(nxyz_all), &
+!                   wrk(1,1,1,4)/real(nxyz_all)
+!              call flush(706)
+!           end if
 
 !--------------------------------------------------------------------------------
 !                             PARTICLE PARTS
