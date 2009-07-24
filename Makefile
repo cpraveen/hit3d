@@ -4,6 +4,16 @@
 
 MPIF90 = blah
 
+# Franklin cluster, NERSC
+ifeq ($(HIT3D_MACHINE), franklin)
+        MPIF90 = ftn
+
+        FCFLAGS = -target=linux -i8 -r8 -O4 -c
+        LDFLAGS = -target=linux -i8 -r8 -O4 -lfftw3
+        FCFLAGS_F77 = -Mextend
+endif
+
+# Yellowrail cluster, LANL
 ifeq ($(HOSTNAME), yr-fe1.lanl.gov)
 	MPIF90 = mpif90
 
@@ -11,13 +21,14 @@ ifeq ($(HOSTNAME), yr-fe1.lanl.gov)
 	LDFLAGS = -i8 -r8 -O4 -lfftw3 $(MPI_LD_FLAGS) -L$(FFTW_HOME)/lib
 endif
 
+# Coyote cluster, LANL
 ifeq ($(HOSTNAME), cy-c2.lanl.gov)
 	MPIF90 = mpif90
 	FCFLAGS = -i8 -r8 -O4 -c $(MPI_COMPILE_FLAGS) -I$(FFTW_INCLUDE)
 	LDFLAGS = -i8 -r8 -O4 -lfftw3 $(MPI_LD_FLAGS) -L$(FFTW_HOME)/lib
 endif
 
-
+# WCR cluster, Stanford
 ifeq ($(HOSTNAME), glacial.stanford.edu)
         FFTW_HOME = /home/chumakov/packages/fftw-3.2/pgi
         MPIF90 = mpif90
@@ -27,6 +38,7 @@ ifeq ($(HOSTNAME), glacial.stanford.edu)
 
 endif
 
+# sparrow.stanford.edu, Mac OS X box
 ifeq ($(HOSTNAME), sparrow.stanford.edu)
         MPIF90 = mpif90
         FCFLAGS = -fdefault-real-8 -fdefault-integer-8 -finit-integer=0 -finit-real=zero -c 
@@ -35,11 +47,12 @@ ifeq ($(HOSTNAME), sparrow.stanford.edu)
         LDFLAGS = -fdefault-real-8 -fdefault-integer-8 -finit-integer=0 -finit-real=zero -lmpi -lmpi -lfftw3 -lm
 endif
 
-
-
+# Program name
 PROG    = hit3d.x
 
-MODULES = m_openmpi.o m_io.o\
+# Modules
+MODULES = m_openmpi.o\
+	m_io.o\
 	m_parameters.o\
 	m_work.o\
 	m_fields.o\
@@ -53,6 +66,7 @@ MODULES = m_openmpi.o m_io.o\
 	m_les.o\
 	RANDu.o
 
+# Objects
 OBJ     = main.o\
 	begin_new.o\
 	begin_restart.o\

@@ -45,6 +45,8 @@ subroutine init_scalar(n_scalar)
   if (ic_type.eq.0) then   
      ! gradient source - no need for initial conditions
      ! thus making the initial scalar field zero
+     write(out,*) "The scalar type = 0, nothing to generate"
+     call flush(out)
      fields(:,:,:,n_scalar+3) = zip
 
   elseif (ic_type.lt.10) then
