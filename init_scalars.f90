@@ -296,7 +296,7 @@ subroutine init_scalar_space(n_scalar)
   implicit none
 
   integer :: k, n_scalar, sc_type, ic_type
-  real*8  :: zloc, s, h
+  real*8  :: zloc, xx, s, h
 
   write(out,*) " Generating scalar # ", n_scalar
   call flush(out)
