@@ -321,7 +321,7 @@ subroutine init_scalar_space(n_scalar)
      ! creating array of scalar
      do i = 1,nx
         xx = dble(i-1) * dx
-        s = tanh((xx-PI*0.25)/h) - tanh((zloc-PI*0.75)/h) + tanh((xx-PI*1.25)/h) - tanh((zloc-PI*1.75)/h) 
+        s = tanh((xx-PI*0.25)/h) - tanh((xx-PI*0.75)/h) + tanh((xx-PI*1.25)/h) - tanh((xx-PI*1.75)/h) 
         wrk(i,:,:,0) = s - one
         ! now it is between -1 and 1
      end do
