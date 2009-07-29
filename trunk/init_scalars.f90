@@ -295,7 +295,7 @@ subroutine init_scalar_space(n_scalar)
 
   implicit none
 
-  integer :: k, n_scalar, sc_type, ic_type
+  integer :: i, k, n_scalar, sc_type, ic_type
   real*8  :: zloc, xx, s, h
 
   write(out,*) " Generating scalar # ", n_scalar
@@ -319,10 +319,10 @@ subroutine init_scalar_space(n_scalar)
      h = max(8.*dz, PI/8.d0)
 
      ! creating array of scalar
-     do k = 1,nx
-        xx = dble(k-1) * dx
+     do i = 1,nx
+        xx = dble(i-1) * dx
         s = tanh((xx-PI*0.25)/h) - tanh((zloc-PI*0.75)/h) + tanh((xx-PI*1.25)/h) - tanh((zloc-PI*1.75)/h) 
-        wrk(:,:,k,0) = s - one
+        wrk(i,:,:,0) = s - one
         ! now it is between -1 and 1
      end do
 
