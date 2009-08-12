@@ -45,6 +45,8 @@ subroutine init_scalar(n_scalar)
   if (ic_type.eq.0) then   
      ! gradient source - no need for initial conditions
      ! thus making the initial scalar field zero
+     write(out,*) "The scalar type = 0, nothing to generate"
+     call flush(out)
      fields(:,:,:,n_scalar+3) = zip
 
   elseif (ic_type.lt.10) then
@@ -296,7 +298,7 @@ subroutine init_scalar_space(n_scalar)
   implicit none
 
   integer :: i, k, n_scalar, sc_type, ic_type
-  real*8  :: zloc, xx, s, h
+  real*8  :: zloc, sctmp, h, xx
 
   write(out,*) " Generating scalar # ", n_scalar
   call flush(out)
@@ -307,22 +309,47 @@ subroutine init_scalar_space(n_scalar)
 
   select case (ic_type)
 
+!---------------------------------------------------
+! single slab of the scalar
+!---------------------------------------------------
   case(11) 
+
+     ! how much to smear out the interface
+     ! the minimum interface length is set to 2*dz
+     ! the maximum is set to 2*PI/(peak wavenumber for the scalar, taken from
+     ! the .in file)
+     h = max(2.*dz, two*PI/peak_wavenum_sc(n_scalar))
+
+     ! creating array of scalar
+     do k = 1,nz
+        zloc = dble(myid*nz + k-1) * dz
+        sctmp = tanh((zloc-PI*0.5)/h) - tanh((zloc-PI*1.5)/h) - one
+        wrk(:,:,k,0) = sctmp
+     end do
+
+     ! FFT of the scalar
+     call xFFT3d(1,0)
+
+     ! putting it into the scalar array
+     fields(:,:,:, 3+n_scalar) = wrk(:,:,:,0)
+     if (iammaster) fields(1,1,1,3+n_scalar) = zip
+
 !---------------------------------------------------
 ! two slabs of the scalar
 !---------------------------------------------------
+  case(12)
 
      write(out,*) "-- Double-slab scalar in real space"
      call flush(out)
- 
+
      ! how much to smear out the interface
      h = max(8.*dz, PI/8.d0)
 
      ! creating array of scalar
      do i = 1,nx
         xx = dble(i-1) * dx
-        s = tanh((xx-PI*0.25)/h) - tanh((xx-PI*0.75)/h) + tanh((xx-PI*1.25)/h) - tanh((xx-PI*1.75)/h) 
-        wrk(i,:,:,0) = s - one
+        sctmp = tanh((xx-PI*0.25)/h) - tanh((xx-PI*0.75)/h) + tanh((xx-PI*1.25)/h) - tanh((xx-PI*1.75)/h)
+        wrk(i,:,:,0) = sctmp - one
         ! now it is between -1 and 1
      end do
 
@@ -332,14 +359,18 @@ subroutine init_scalar_space(n_scalar)
      ! putting it into the scalar array
      fields(:,:,:, 3+n_scalar) = wrk(:,:,:,0)
 
+
   case default
      write(out,*) "INIT_SCALARS: UNEXPECTED SCALAR TYPE: ", scalar_type(n_scalar)
      call flush(out)
      stop
   end select
- 
+
   write(out,*) "Initialized the scalars."
   call flush(out)
+
+  return
+
 
   return
 
