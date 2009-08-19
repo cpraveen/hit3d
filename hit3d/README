@@ -1,0 +1,55 @@
+
+PASSIVE SCALARS
+
+Passive scalars do not affect the flow.  They are transported by
+advection and diffusion, and they can be created/destroyed as a result
+of reaction.
+ 
+In the code, the scalars are identified by "scalar type".
+
+Scalars of type < 100 are non-reactive.
+
+Special scalar type 0 is the passive scalar with uniform gradient source.
+The gradient is 1 and going in the x-direction.
+
+Scalars of type > 100 have a reaction rate of type R(T), where T is
+the scalar.  For reactive scalars, the first digit of scalar type
+(hundreds) determines the particular kind of reaction rate:
+
+  1 - KPP reaction rate, R(T) = 1 - T^2;
+  2 - symmetric bistable (spinodal) reaction rate, R(T) = (1-T^2)*T;
+  3 - self-adjusting bistable reaction rate, R(T) = (1-T^2)*(T-Tavg).
+
+The last two digits of scalar type determines the initial distribution
+of scalar:
+
+  0 - Plain Kolmogorov spectrum
+  1 - Exponential spectrum
+  2 - Von Karman spectrum
+  3 - double-delta PDF
+
+ 11 - scalar is spatially distributed: T = 1 for z/2pi = [1/4:3/4],
+      and T = -1 elsewhere.
+
+Scalars' properties are specified in the *.in file in the table: 
+
+  type, Sc, infrared exponent, peak wavenumber, reaction rate
+
+_______________________________________________________________________
+LES MODE SWITCH  les_mode
+0 - no LES, perform straight DNS
+1 - Smagorinsky model for velocity
+2 - Dynamic Localization Model with constant coefficients, or Yoshizawa Model.
+
+
+
+-----------------------------------------------------------------------
+RUNNING THE CODE
+-----------------------------------------------------------------------
+The directory "scripts" provides some examples of the batch job submission files.
+
+snapshot.gp	a Gnuplot instruction file that creates two plots that 
+ 		can get attached to the notification emails 
+
+wcr.sub     	Example script for WCR cluster at Center for 
+		Turbuience Research, Stanford
