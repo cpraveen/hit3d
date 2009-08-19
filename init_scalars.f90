@@ -359,6 +359,9 @@ subroutine init_scalar_space(n_scalar)
      ! putting it into the scalar array
      fields(:,:,:, 3+n_scalar) = wrk(:,:,:,0)
 
+     ! making sure that the mean is ero
+     if (iammaster) fields(1,1,1,3+n_scalar) = zip
+
 
   case default
      write(out,*) "INIT_SCALARS: UNEXPECTED SCALAR TYPE: ", scalar_type(n_scalar)

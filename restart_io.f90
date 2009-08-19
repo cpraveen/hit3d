@@ -1,3 +1,6 @@
+!================================================================================
+!================================================================================
+!================================================================================
 subroutine restart_read
 
   use m_openmpi
@@ -95,17 +98,12 @@ subroutine restart_read
 
   ! only the hydro part of processors is involved in this
   hydro_only: if (task.eq.'hydro') then
-
      count = (nx+2) * ny * nz
-
      ! the root reads everything and sends to the slaves
      if (myid.eq.0) then
-
         do n = 1, 3 + nums_read + n_les
-
            ! first chunk belongs to the root
            read(91) (((fields(i,j,k,n),i=1,nx),j=1,ny),k=1,nz)
-
            ! the rest gets read and sent to the appropriate porcess
            do id_to = 1,numprocs-1
               read(91) (((wrk(i,j,k,1),i=1,nx),j=1,ny),k=1,nz)
@@ -117,22 +115,15 @@ subroutine restart_read
 !!$              call flush(out)
 
            end do
-
         end do
-
         ! then the root closes the restart file
         close(91)
-
      else
         ! the slaves receive and put it into ss array
-
         do n = 1, 3 + nums_read + n_les
-
            tag = (3+nums_read) * myid + n-1
            call MPI_RECV(fields(1,1,1,n),count,MPI_REAL8,0,tag,MPI_COMM_TASK,mpi_status,mpi_err)
-
         end do
-
      end if
 
   end if hydro_only
@@ -175,25 +166,12 @@ subroutine restart_write
 !  if (int_particles) call particles_restart_write
 !  if (int_particles) call particles_restart_write_binary
 
-
-
   ! how many scalars to write
   nums_out = 0
   if (int_scalars) nums_out = n_scalars
 
   ! first FFT everything to real space
   wrk(:,:,:,1:3+nums_out+n_les) = fields(:,:,:,1:3+nums_out+n_les)
-
-!!$!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-!!$  write(out,*) 'LEGACY CODE COMPATIBILITY: u,v,w <-> w,v,u'
-!!$  call flush(out)
-!!$  wrk(:,:,:,1) = fields(:,:,:,3)
-!!$  wrk(:,:,:,2) = fields(:,:,:,2)
-!!$  wrk(:,:,:,3) = fields(:,:,:,1)
-!!$!^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-!  do n = 1,3+nums_out
-!     call xFFT3d(-1,n)
-!  end do
 
   ! --------------- writing process ------------------
 
@@ -288,24 +266,18 @@ subroutine restart_write_parallel
   integer(kind=MPI_OFFSET_KIND)  :: offset
   real*8, allocatable :: sctmp8(:,:,:)
 
-  integer*4 :: nx1, ny1, nz1, nums1, MST1
+  integer*4 :: nx1, ny1, nz1, nums1, nles1
   real*8 :: ST
 
   if (itime.eq.last_dump) return
 
-
   ! how many scalars to write
   nums_out = 0
-  if (int_scalars) nums_out = n_scalars
+  if (int_scalars) nums_out = nums_out + n_scalars
+  if (n_les > 0)   nums_out = nums_out + n_les
 
-  ! first FFT everything to real space
-  wrk(:,:,:,1:3+nums_out+n_les) = fields(:,:,:,1:3+nums_out+n_les)
-
-
-  ! Converting all variables to X-space (decided not to)
-!  do n = 1,3+nums_out
-!     call xFFT3d(-1,n)
-!  end do
+  ! using wrk array
+  wrk(:,:,:,1:3+nums_out) = fields(:,:,:,1:3+nums_out)
 
   ! --------------- writing process ------------------
 
@@ -322,20 +294,20 @@ subroutine restart_write_parallel
 
   ! the master node writes the header with parameters
   if (myid.eq.0) then
-     nx1 = nx;  ny1 = ny;  nz1 = nz_all;  MST1 = 0;  nums1 = n_scalars; 
+     nx1 = nx;  ny1 = ny;  nz1 = nz_all;  nles1 = n_les;  nums1 = n_scalars; 
      count = 1
      ST = zip
      call MPI_FILE_WRITE(fh,   nx1, count, MPI_INTEGER4, mpi_status, mpi_err)
      call MPI_FILE_WRITE(fh,   ny1, count, MPI_INTEGER4, mpi_status, mpi_err)
      call MPI_FILE_WRITE(fh,   nz1, count, MPI_INTEGER4, mpi_status, mpi_err)
      call MPI_FILE_WRITE(fh, nums1, count, MPI_INTEGER4, mpi_status, mpi_err)
-     call MPI_FILE_WRITE(fh,  MST1, count, MPI_INTEGER4, mpi_status, mpi_err)
+     call MPI_FILE_WRITE(fh, nles1, count, MPI_INTEGER4, mpi_status, mpi_err)
      call MPI_FILE_WRITE(fh,  TIME, count, MPI_REAL8, mpi_status, mpi_err)
      call MPI_FILE_WRITE(fh,    DT, count, MPI_REAL8, mpi_status, mpi_err)
   end if
 
   ! all nodes write their stuff into the file
-  writing_fields: do n = 1, 3 + nums_out + n_les
+  writing_fields: do n = 1, 3 + nums_out
 
      offset = 36 + (n-1)*nx*ny*nz_all*8 + myid*nx*ny*nz*8
      count = nx * ny * nz
@@ -357,8 +329,9 @@ subroutine restart_write_parallel
 
   write(out,*) '------------------------------------------------'
   write(out,*) 'Restart file written (par): '//trim(fname)
-  write(out,"(' Velocities and ',i3,' scalars (including LES)')") nums_out+n_les
-  write(out,"(' Restart file time = ',f15.10,i7)") time,itime
+  write(out,"(' Velocities and ',i3,' scalars')") nums_out
+  if (n_les>0) write(out,"('    (including ',i3,' LES scalars)')") n_les
+  write(out,"(' Restart file time = ',f15.10,i7)") time, itime
   write(out,*) '------------------------------------------------'
   call flush(out)
 
@@ -384,10 +357,9 @@ subroutine restart_read_parallel
   use m_particles
   implicit none
 
-  integer*4    :: nx1,ny1,nz1, nums1, MST1, nums_read
-  integer      :: i, j, k, n
+  integer*4    :: nx1,ny1,nz1, nums1, nles1, nums_read
+  integer      :: i, j, k, n, n_skip
 
-  real*8 :: ST
   integer(kind=MPI_INTEGER_KIND) :: fh
   integer(kind=MPI_OFFSET_KIND)  :: offset
   real*8, allocatable :: sctmp8(:,:,:)
@@ -411,9 +383,8 @@ subroutine restart_read_parallel
   ! ----------------------------------------------------------------------
 
   if (myid.eq.0) then
-!!     open(91,file=fname,form='binary')
      open(91,file=fname,form='unformatted',access='stream')
-     read(91) nx1, ny1, nz1, nums1, MST1, TIME, DT
+     read(91) nx1, ny1, nz1, nums1, nles1, TIME, DT
      close(91)
   end if
 
@@ -421,17 +392,28 @@ subroutine restart_read_parallel
   call MPI_BCAST(ny1,  1,MPI_INTEGER4,0,MPI_COMM_TASK,mpi_err)
   call MPI_BCAST(nz1,  1,MPI_INTEGER4,0,MPI_COMM_TASK,mpi_err)
   call MPI_BCAST(nums1,1,MPI_INTEGER4,0,MPI_COMM_TASK,mpi_err)
+  call MPI_BCAST(nles1,1,MPI_INTEGER4,0,MPI_COMM_TASK,mpi_err)
 
   call MPI_BCAST(TIME,1,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
   call MPI_BCAST(  DT,1,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
 
-  ! everyone checks of the parameters coinside with what's in the .in file
+  ! checking if the array sizes are the same in .in file and restart file
   if (nx.ne.nx1 .or. ny.ne.ny1 .or. nz_all.ne.nz1) then
      write(out,*) '*** error: Dimensions are different'
      write(out,*) '***     .in file: ',nx,ny,nz_all
      write(out,*) '*** restart file: ',nx1,ny1,nz1
      call flush(out)
-     stop
+     call my_exit(-1)
+  end if
+
+  ! checking if the number of LES quantities is the same in .in and restart files
+  if (n_les .ne. nles1) then
+     write(out,*) '*** error: Different values of n_les:'
+     write(out,*) '***     .in file: ',n_les
+     write(out,*) '*** restart file: ',nles1
+     write(out,*) '*** Make sure you are running the same simulation.'
+     call flush(out)
+     call my_exit(-1)
   end if
 
 !-----------------------------------------------------------------------
@@ -487,33 +469,43 @@ subroutine restart_read_parallel
   call MPI_INFO_CREATE(mpi_info, mpi_err)
   call MPI_FILE_OPEN(MPI_COMM_TASK,fname,MPI_MODE_RDONLY,mpi_info,fh,mpi_err)
 
-  reading_fields: do n = 1, 3 + nums_read + n_les
+  ! note that the data from the restart file has dimensions (nx,ny,nz),
+  ! while the fields array has fimensions (nx+2,ny,nz).  
+  ! that is why we need to read each field in the sctmp array first, and then
+  ! rearrange it and put into the fields array.
+
+  reading_fields: do n = 1, 3 + nums_read
+
+     write(out,"('Reading variable # ',i3)") n
+     call flush(out)
 
      offset = 36 + (n-1)*nx*ny*nz_all*8 + myid*nx*ny*nz*8
      count = nx * ny * nz
-     ! note that the data from the restart file has dimensions (nx,ny,nz),
-     ! while the fields array has fimensions (nx+2,ny,nz).  
-     ! that is why we need to read each field in the sctmp array first, and then
-     ! rearrange it and put into the fields array.
 !     call MPI_FILE_READ_AT(fh, offset, sctmp8, count, MPI_REAL8, mpi_status, mpi_err)
      call MPI_FILE_READ_AT_ALL(fh, offset, sctmp8, count, MPI_REAL8, mpi_status, mpi_err)
-
      fields(1:nx,1:ny,1:nz,n) = sctmp8(1:nx,1:ny,1:nz)
-
   end do reading_fields
+
+  ! now reading the LES variables.  They are stored after the fields
+  ! u,v,w,sc(1...nums1), so we are applying the offset based on the 
+  ! number of scalars in the restart file.
+  reading_les_fields: do n = 1, n_les
+
+     write(out,"('Reading LES variable # ',i3)") n
+     call flush(out)
+
+     n_skip = 3 + nums1
+     offset = 36 + (n_skip+n-1)*nx*ny*nz_all*8 + myid*nx*ny*nz*8
+     count = nx * ny * nz
+!     call MPI_FILE_READ_AT(fh, offset, sctmp8, count, MPI_REAL8, mpi_status, mpi_err)
+     call MPI_FILE_READ_AT_ALL(fh, offset, sctmp8, count, MPI_REAL8, mpi_status, mpi_err)
+     fields(1:nx,1:ny,1:nz,3+n_scalars+n) = sctmp8(1:nx,1:ny,1:nz)
+  end do reading_les_fields
 
   call MPI_FILE_CLOSE(fh, mpi_err)
   call MPI_INFO_FREE(mpi_info, mpi_err)
   deallocate(sctmp8)
 
-!----------------------------------------------------------------------
-!  FFT to the complex space and putting variables in fields array
-!----------------------------------------------------------------------
-!  fft_fields: do n = 1,3+nums_read
-!     wrk(:,:,:,1) = fields(:,:,:,n)
-!     call xFFT3d(1,1)
-!     fields(:,:,:,n) = wrk(:,:,:,1)
-!  end do fft_fields
 
   write(out,*) "Restart file successfully read."
   call flush(out)

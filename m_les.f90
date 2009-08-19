@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-07-06 11:08:51 (chumakov)>
+!  Time-stamp: <2009-08-19 14:01:33 (chumakov)>
 !================================================================================
 module m_les
 
@@ -14,6 +14,7 @@ module m_les
   use m_parameters
   use m_fields
   use m_work
+  use x_fftw
   implicit none
 
 
@@ -32,6 +33,9 @@ module m_les
 
   ! LES sources for velocities
   real(kind=8), allocatable :: vel_source_les(:,:,:,:)
+
+  ! separate array for the subgrid stress
+  real(kind=8), allocatable :: tauij(:,:,:,:)
 
   ! Smagorinsky constant
   real(kind=8) :: c_smag = 0.18
@@ -83,8 +87,11 @@ contains
     write(out,*) 'LES_DELTA = ',les_delta
     ! initializeing stuff based on the model switch "les_model"
     select case (les_model)
+
+!--------------------------------------------------------------------------------
+!  Smagorinsky model
+!--------------------------------------------------------------------------------
     case(1)
-       ! Smagorinsky model
        write(out,*) ' - Smagorinsky model: initializing the eddy viscosity'
        call flush(out)
        allocate(turb_visc(nx,ny,nz),stat=ierr)
@@ -98,8 +105,10 @@ contains
        n_les = 0
        les_model_name = " SM"
 
+!--------------------------------------------------------------------------------
+!  Dynamic localization model
+!--------------------------------------------------------------------------------
     case(2)
-       ! Dynamic Localization model
        write(out,*) ' - DL model: initializing the eddy viscosity and adding extra transport equation'
        call flush(out)
        allocate(turb_visc(nx,ny,nz),stat=ierr)
@@ -113,6 +122,9 @@ contains
        n_les = 1
        les_model_name = "DLM"
 
+!--------------------------------------------------------------------------------
+!  Dynamic localization model + lag model for the subgrid energy dissipation
+!--------------------------------------------------------------------------------
     case(3)
        ! Dynamic Localization model + lag model for the dissipation
        write(out,*) ' - DL model + lag-model for dissipation'
@@ -128,8 +140,11 @@ contains
        n_les = 3
        les_model_name = "DLL"
 
+!--------------------------------------------------------------------------------
+!  Dynamic Structure model + algebraic model for dissipation
+!--------------------------------------------------------------------------------
+
     case(4)
-       ! Dynamic Structure model + algebraic model for dissipation
 
        write(out,*) ' - DSt model + algebraic model for dissipation'
        call flush(out)
@@ -151,8 +166,10 @@ contains
        ! Note that for this model we need a bigger wrk array
        ! this is taken care of in m_work.f90
 
+!--------------------------------------------------------------------------------
+!  Dynamic Structure model + lag model for dissipation
+!--------------------------------------------------------------------------------
     case(5)
-       ! Dynamic Structure model + lag model for dissipation
 
        write(out,*) ' - DSt model + lag model for dissipation'
        call flush(out)
@@ -192,9 +209,11 @@ contains
 
 !<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG-
 
+!--------------------------------------------------------------------------------
+!  Mixed model: Dynamic Structure + C-mixed * Dynamic Localization model
+!  Dissipation model is algebraic
+!--------------------------------------------------------------------------------
     case(6)
-       ! Mixed model: Dynamic Structure + C-mixed * Dynamic Localization model
-       ! Dissipation model is algebraic
 
        write(out,*) ' - MIXED MODEL: DSTM + DLM'
        write(out,*) ' -              Dissipation is algebraic'
@@ -238,9 +257,11 @@ contains
        ! this is taken care of in m_work.f90
 
 
+!--------------------------------------------------------------------------------
+!  Mixed model: Dynamic Structure + some viscosity (about 15% of the usual)
+!  Dissipation model is lag-model
+!--------------------------------------------------------------------------------
     case(7)
-       ! Mixed model: Dynamic Structure + some viscosity (about 15% of the usual)
-       ! Dissipation model is lag-model
 
        write(out,*) ' - MIXED MODEL: DSTM + eddy viscosity'
        write(out,*) ' -              Lag-model for Dissipation'
@@ -283,6 +304,62 @@ contains
        ! Note that for this model we need a bigger wrk array
        ! this is taken care of in m_work.f90
 
+!--------------------------------------------------------------------------------
+!  LES MODEL # 10
+!
+!  One-equation mixed model for the momentum closure (DSTM + C_mixed * SM)
+!  Lag model for the closure of the k-equation
+!  Harlow model for closure of the scalar tranport equation
+!--------------------------------------------------------------------------------
+    case(10)
+       write(out,*) '   LES MODEL # 10'
+       write(out,*) ' - MIXED MODEL: DSTM + eddy viscosity'
+       write(out,*) '                Lag-model for Dissipation'
+       write(out,*) ' - SCALARS: Harlow model'
+       write(out,*) ' ============> file c_mixed.in is still required'
+       call flush(out)
+
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG+
+       inquire(file = 'c_mixed.in', exist = there)
+       if (.not.there) then
+          write(out,*) "Cannot find the file 'c_mixed.in', exiting"
+          call my_exit(-1)
+       end if
+       if (iammaster) then
+          open(900,file='c_mixed.in')
+          read(900,*) C_mixed
+          close(900)
+       end if
+       count = 1
+       call MPI_BCAST(C_mixed,count,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
+       write(out,*) "MIXED MODEL WITH C_MIXED = ",C_mixed
+       call flush(out)
+!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG-
+
+
+       allocate(turb_visc(nx,ny,nz), tauij(nx+2,ny,nz,6), stat=ierr)
+       if (ierr/=0) then
+          write(out,*) 'Cannot allocate the auxiliary arrays'
+          call flush(out)
+          call my_exit(-1)
+       end if
+       turb_visc = zip
+       tauij = zip
+
+       ! number of extra LES quantities is 2: (BT), (eps * T)
+       n_les = 2
+       les_model_name = "10 "
+
+       ! For this model we need a filter.  The filter cannot be initialized
+       ! without previous initialization of fields array.  So initialization of
+       ! the filter is done in m_les_begin
+
+       ! Note that for this model we need a bigger wrk array
+       ! this is taken care of in m_work.f90
+
+!--------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------
+
 
     case default
        write(out,*) 'M_LES_INIT: invalid value of les_model:',les_model
@@ -291,6 +368,7 @@ contains
     end select
 
 !--------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------
 
     write(out,*) "n_les = ", n_les
 
@@ -298,20 +376,27 @@ contains
     ! we need to have SC and PE numbers defined for those quantities.  For this we
     ! need to re-allocate the arrays SC and PE
     additional_scalars: if (n_les .gt. 0) then
+
        write(out,*) "Adding elements to arrays PE and SC for the LES-related scalars..."
        call flush(out)
+
        allocate(sctmp(1:n_scalars+n_les), stat=ierr)
        sctmp(1:n_scalars) = sc(1:n_scalars)
        sctmp(n_scalars+1:n_scalars+n_les) = one
+
        if (allocated(sc)) deallocate(sc)
        allocate(sc(1:n_scalars+n_les))
        sc = sctmp
+
        if (allocated(pe)) deallocate(pe)
        allocate(pe(1:n_scalars+n_les))
        pe = nu / sc
+
        deallocate(sctmp)
+
        write(out,*) " ...done."
        call flush(out)
+
     end if additional_scalars
 
 
@@ -321,7 +406,7 @@ contains
     return
   end subroutine m_les_init
 
-
+!================================================================================
 !================================================================================
 !  initialization of the LES arrays - part 2
 !  definition of the arrays
@@ -330,21 +415,28 @@ contains
 !================================================================================
   subroutine m_les_begin
 
-    use x_fftw
     use m_filter_xfftw
     implicit none
-
-    ! if les_model=0, do not initialize anything and return
-    ! also don't do anything if the model is Smagorinsky model - it does not
-    ! need any additional initialization beside the array allocation which has
-    ! been already done.
-    if (les_model<=1) return
 
     write(out,*) "M_LES_BEGIN..."
     call flush(out)
 
     select case(les_model)
 
+!--------------------------------------------------------------------------------
+!  if les_model=0, do not initialize anything and return
+!  also don't do anything if the model is Smagorinsky model - it does not
+!  need any additional initialization beside the array allocation which has
+!  been already done.
+!--------------------------------------------------------------------------------
+    case(0) 
+       return
+    case(1)
+       return
+
+!--------------------------------------------------------------------------------
+!  Dynamic localization model
+!--------------------------------------------------------------------------------
     case(2)
        write(out,*) "-- DLM model"
        call flush(out)
@@ -355,6 +447,7 @@ contains
           call m_les_dlm_k_init
        end if
 
+!--------------------------------------------------------------------------------
     case(3)
        write(out,*) "-- DLM model with lag model for dissipation"
        call flush(out)
@@ -394,6 +487,7 @@ contains
        if (iammaster) fields(1,1,1,3+n_scalars+2) = 0.5d0 * fields(1,1,1,3+n_scalars+1)
        if (iammaster) fields(1,1,1,3+n_scalars+3) = 0.5d0 * fields(1,1,1,3+n_scalars+1)
 
+!--------------------------------------------------------------------------------
 
     case(4)
 
@@ -414,6 +508,8 @@ contains
 
           if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.2d0 * real(nxyz_all)
        end if
+
+!--------------------------------------------------------------------------------
 
     case(5)
 
@@ -438,6 +534,8 @@ contains
           if (iammaster) fields(1,1,1,3+n_scalars+2) = fields(1,1,1,3+n_scalars+1)
           if (iammaster) fields(1,1,1,3+n_scalars+3) = 0.d0*fields(1,1,1,3+n_scalars+1)
        end if
+
+!--------------------------------------------------------------------------------
 
     case(6)
 
@@ -464,7 +562,10 @@ contains
 
        end if
 
+!--------------------------------------------------------------------------------
+
     case(7)
+
        write(out,*) "-- MIXED MODEL (Dynamic Structure model + Smagorinsky)"
        write(out,*) "               Lag-model for dissipation"
        call flush(out)
@@ -494,6 +595,37 @@ contains
 
        end if
 
+!--------------------------------------------------------------------------------
+
+    case(10)
+
+       write(out,*) "-- MIXED MODEL (Dynamic Structure model + Smagorinsky)"
+       write(out,*) "               Lag-model for dissipation"
+       call flush(out)
+
+       ! initializing filtering arrays
+       ! because filter_xfftw_init uses fields(1) as a temporary array, we need
+       ! to store it before we initialize the filter, and the restore it to
+       ! what it was.
+       write(out,*) "   Initializing filter"
+       call flush(out)
+       wrk(:,:,:,LBOUND(wrk,4)) = fields(:,:,:,LBOUND(fields,4))
+       call filter_xfftw_init
+       fields(:,:,:,LBOUND(fields,4)) = wrk(:,:,:,LBOUND(wrk,4))
+
+       if (itime.eq.0) then
+          write(out,*) "-- (BT)=k_s, (Eps T) = 0"
+          call flush(out)
+          ! No need to initialize k_s, since k_s = (BT)+(eps T)
+          ! if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.5d0 * real(nxyz_all)
+          ! initializing (BT)
+          if (iammaster) fields(1,1,1,3+n_scalars+1) = 0.1d0 * real(nxyz_all)
+          ! initializing (eps T)
+          if (iammaster) fields(1,1,1,3+n_scalars+2) = 0.1d0 * real(nxyz_all)
+       end if
+
+!--------------------------------------------------------------------------------
+
     case default
        write(out,*) "M_LES_BEGIN: invalid value of les_model: ",les_model
        call flush(out)
@@ -505,11 +637,15 @@ contains
   end subroutine m_les_begin
 
 !================================================================================
+!================================================================================
 !  Adding LES sources to the RHS of velocities
 !================================================================================
   subroutine les_rhs_velocity
 
+    use x_fftw
     implicit none
+
+    integer :: i, j, k
 
     select case (les_model)
     case(1:3)
@@ -533,11 +669,35 @@ contains
        ! also apply turbulent viscosity to velocities
        call les_rhsv_turb_visc
 
+    case(10)
+       ! Mixed model (DSTM + DLM) + lag-model for dissipation of k_sgs
+       ! add the velocity sources to RHS for velocitieis
+       ! The sources are directly computed from the array tauij
+       ! so we do not need a separate array for them
+       call les_add_vel_source_from_tauij
+       ! also apply turbulent viscosity to velocities
+       call les_rhsv_turb_visc
+
     case default
        write(out,*) 'LES_RHS_VELOCITY: invalid value of les_model:',les_model
        call flush(out)
        call my_exit(-1)
     end select
+
+!--------------------------------------------------------------------------------
+!  Making sure that we are not getting any aliasing errors. That is done by 
+!  making RHS zero for wavenumbers that are aliased.
+!--------------------------------------------------------------------------------
+    do k = 1, nz
+       do j = 1, ny
+          do i = 1, nx + 2
+             if (ialias(i,j,k) .ne. 0) then
+                wrk(i,j,k,1:3) = zip
+             end if
+          end do
+       end do
+    end do
+!--------------------------------------------------------------------------------
 
     return
   end subroutine les_rhs_velocity
@@ -550,34 +710,28 @@ contains
     use x_fftw
     implicit none
 
-    integer :: n
-
-    if(iammaster .and. mod(itime,iprint1)==0) then
-       open(999,file='les.gp', position='append')
-       if (n_les>0) energy = fields(1,1,1,3+n_scalars+1) / real(nxyz_all)
-       write(999,"(i6,x,10e15.6)") itime, time, energy, production, B, dissipation
-       close(999)
-    end if
-    B = zip
-    production = zip
-    dissipation = zip
+    integer :: n, i, j, k
 
     ! note that the turbulent viscosity itself is computed in rhs_scalars.f90
     ! here we only modify the RHSs for scalars in case we're running LES
 
     select case (les_model)
+!--------------------------------------------------------------------------------
     case(1)
        call m_les_rhss_turb_visc
+!--------------------------------------------------------------------------------
     case(2)
        ! -- Dynamic Localization model with algebraic model for dissipation
        call m_les_k_src_dlm
        call m_les_k_diss_algebraic
        call m_les_rhss_turb_visc
+!--------------------------------------------------------------------------------
     case(3)
        ! -- Dynamic Localization model with lag-model for dissipation
        call m_les_k_src_dlm
        call m_les_lag_model_sources
        call m_les_rhss_turb_visc
+!--------------------------------------------------------------------------------
     case(4) 
        ! -- Dynamic Structure Model with algebraic model for dissipation
        ! First taking care of the passive scalars (don't have them for now)
@@ -595,7 +749,7 @@ contains
        call m_les_dstm_vel_k_sources
        call m_les_k_diss_algebraic
        call m_les_rhss_turb_visc
-
+!--------------------------------------------------------------------------------
     case(5) 
        ! -- Dynamic Structure Model with lag-model for dissipation
        ! First taking care of the passive scalars (don't have them for now)
@@ -619,6 +773,7 @@ contains
        ! diffusing k_s, (BT) and (epsilon*T) with turbulent viscosity
        call m_les_rhss_turb_visc
 
+!--------------------------------------------------------------------------------
     case(6) 
        ! Mixed model (Dynamic Structure model + a fraction of Dynamic Localization model)
        ! The fraction is given by the constant C_mixed, which is read from the file
@@ -645,6 +800,7 @@ contains
        ! algebraic model for dissipation of k_sgs: k^{3/2}/Delta
        call m_les_k_diss_algebraic
 
+!--------------------------------------------------------------------------------
     case(7) 
        ! Mixed model (Dynamic Structure model + a fraction of Dynamic Localization model)
        ! The fraction is given by the constant C_mixed, which is read from the file
@@ -674,29 +830,85 @@ contains
        ! diffusing k_s, (BT) and (epsilon*T) with turbulent viscosity
        call m_les_rhss_turb_visc
 
+!--------------------------------------------------------------------------------
+    case(10) 
+       ! Mixed model (Dynamic Structure model + a fraction of Smagorinsky model)
+       ! The fraction is given by the constant C_mixed, which is read from the file
+       ! c_mixed.in
 
-!!$! --------------------------------------------------
-!!$        wrk(:,:,:,0) = wrk(:,:,:,3+n_scalars+1)
-!!$        call xFFT3d(-1,0)
-!!$        tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,0)
-!!$        fname = 'rhskt'
-!!$        call write_tmp4
-!!$        stop
-!!$! --------------------------------------------------
+       ! Dissipation term in the k-equation is closed via lag-model
+
+       ! first we add the turbulent diffusion to all scalars:
+       ! (BT), (eps T) and the passive scalars
+       call m_les_rhss_turb_visc
+
+       ! now calculate the SGS stress tauij and calculate the source term Pi 
+       ! for (BT), the scalar with the number 3+n_scalars+1
+       ! Add the source term for (BT) to the RHS for (BT)
+       ! Store the SGS stress in the array tauij.
+       call m_les_get_tauij_dstm_source_BT
+
+       ! get the SGS fluxes for all scalars, using Harlow model
+       call m_les_rhss_sgs_flux_harlow
+
+       ! get the lag-model sources for (BT) and (eps T) and add those to RHSs
+       ! the "no_k" means that we calculate k_sgs as (BT)+(eps T), effectively
+       ! reducing the number of extra equations.
+       call m_les_lag_model_sources_no_k
+
+!--------------------------------------------------------------------------------
 
     case default
        write(out,*) 'LES_RHS_SCALARS: invalid value of les_model:',les_model
        call flush(out)
        call my_exit(-1)
     end select
+
+
+!--------------------------------------------------------------------------------
+!  Making sure that we are not getting any aliasing errors. That is done by 
+!  making RHS zero for wavenumbers that produce aliasing.
+!--------------------------------------------------------------------------------
+    do k = 1, nz
+       do j = 1, ny
+          do i = 1, nx + 2
+             if (ialias(i,j,k) .ne. 0) then
+                wrk(i,j,k,4:3+n_scalars+n_les) = zip
+             end if
+          end do
+       end do
+    end do
+
+!--------------------------------------------------------------------------------
+!  outputting the LES quantities in the file les.gp
+!--------------------------------------------------------------------------------
+    if(iammaster) then
+       if  (mod(itime,iprint1)==0) then
+          open(999,file='les.gp', position='append')
+          if (n_les>0) then
+             if (les_model.lt.10) then
+                energy = fields(1,1,1,3+n_scalars+1) / real(nxyz_all)
+             else
+                energy = (fields(1,1,1,3+n_scalars+1) + fields(1,1,1,3+n_scalars+2))/ real(nxyz_all)
+             end if
+             write(999,"(i6,x,10e15.6)") itime, time, energy, production, B, dissipation
+             close(999)
+          end if
+       end if
+       B = zip
+       production = zip
+       dissipation = zip
+    end if
+
+
+!--------------------------------------------------------------------------------
     return
   end subroutine les_rhs_scalars
 
 !================================================================================
-!    calculating velocity sources and adding them to the RHS's (wrk1...3)
-!
-!    case when SGS stress tau_ij is modeled using turbulent viscosity
-!    the turb. viscosity is supposed to be in the array turb_visc(nx,ny,nz) 
+!================================================================================
+!  calculating LES sources for velocity field and adding them to the 
+!  RHS's (wrk1...3)
 !================================================================================
   subroutine les_rhsv_turb_visc
 
@@ -818,6 +1030,7 @@ contains
   end subroutine les_rhsv_turb_visc
 
 !================================================================================
+!================================================================================
 !    calculating LES sources for scalars and adding them to the RHS's 
 !    wrk4...3+n_scalars+n_les
 !
@@ -841,9 +1054,6 @@ contains
     ! viscosity to the RHS
     les_rhs_all_scalars: do n = 4, 3 + n_scalars + n_les
 
-!!$       write(out,*) "m_les_rhss_turb_visc: doing field #",n
-!!$       call flush(out)
-
        ! computing the second derivative, multiplying it by turb_visc
        ! and adding to the RHS (that is contained in wrk(n))
 
@@ -866,7 +1076,7 @@ contains
           ! following Yoshizawa and Horiuti (1985), the viscosity in the scalar equation
           ! is twice the viscosity used in the production of k_sgs
           ! (Journal of Phys. Soc. Japan, V.54 N.8, pp.2834-2839)
-          wrk(1:nx, 1:ny, 1:nz, tmp2) = two * wrk(1:nx, 1:ny, 1:nz, tmp2)
+          ! wrk(1:nx, 1:ny, 1:nz, tmp2) = two * wrk(1:nx, 1:ny, 1:nz, tmp2)
 
           wrk(:,:,:,0) = wrk(:,:,:,0) + wrk(:,:,:,tmp2)
        end do directions
@@ -902,19 +1112,24 @@ contains
        call les_get_turb_visc_smag
 
     case(2:3)
-
        call les_get_turb_visc_dlm
 
     case(6)
-
        call les_get_turb_visc_smag
        ! making turbulent viscosity a fraction of what it is since this is a
        ! mixed model
        turb_visc = C_mixed * turb_visc
 
     case(7)
-
        call les_get_turb_visc_smag
+       ! making turbulent viscosity a fraction of what it is since this is a
+       ! mixed model
+       turb_visc = C_mixed * turb_visc
+
+    case(10)
+       ! calculating the turbulent viscosity and saving the strain in the
+       ! array for the SGS stress
+       call les_get_turb_visc_smag_save_sij
        ! making turbulent viscosity a fraction of what it is since this is a
        ! mixed model
        turb_visc = C_mixed * turb_visc
@@ -1010,6 +1225,98 @@ contains
   end subroutine les_get_turb_visc_smag
 
 !================================================================================
+!  Calculation of turbulent viscosity turb_visc(:,:,:) - Smagorinsky model
+!  Saving S_ij in the array tauij(:,:,:,:) for further needs.  This is the only
+!  difference between this program and les_get_turb_visc_smag
+!================================================================================
+!================================================================================
+  subroutine les_get_turb_visc_smag_save_sij
+
+    use x_fftw
+    implicit none
+
+    integer :: i, j, k, n
+    real*8 :: c_smag = 0.18_8
+
+    ! due to memory constraints we have only three work arrays wrk4..6,
+    ! because the first three wrk1..3 contain already comptued velocity RHS's.
+
+    ! Calculating S_11, S_12, S_13
+    do k = 1, nz
+       do j = 1, ny
+          do i = 1, nx + 1, 2
+             ! S_11, du/dx
+             wrk(i  ,j,k,4) = - akx(i+1) * fields(i+1,j,k,1)
+             wrk(i+1,j,k,4) =   akx(i  ) * fields(i  ,j,k,1)
+
+             ! S_12, 0.5 (du/dy + dv/dx)
+             wrk(i  ,j,k,5) = -half * ( aky(k) * fields(i+1,j,k,1) + akx(i+1) * fields(i+1,j,k,2) )
+             wrk(i+1,j,k,5) =  half * ( aky(k) * fields(i  ,j,k,1) + akx(i  ) * fields(i  ,j,k,2) )
+
+             ! S_13, 0.5 (du/dz + dw/dx)
+             wrk(i  ,j,k,6) = -half * ( akz(j) * fields(i+1,j,k,1) + akx(i+1) * fields(i+1,j,k,3) )
+             wrk(i+1,j,k,6) =  half * ( akz(j) * fields(i  ,j,k,1) + akx(i  ) * fields(i  ,j,k,3) )
+          end do
+       end do
+    end do
+
+    ! Converting them to real space and adding to turb_visc(:,:,:)
+    do n = 4,6
+       call xFFT3d(-1,n)
+    end do
+    turb_visc(1:nx,1:ny,1:nz) =                                   wrk(1:nx,1:ny,1:nz,4)**2
+    turb_visc(1:nx,1:ny,1:nz) = turb_visc(1:nx,1:ny,1:nz) + two * wrk(1:nx,1:ny,1:nz,5)**2
+    turb_visc(1:nx,1:ny,1:nz) = turb_visc(1:nx,1:ny,1:nz) + two * wrk(1:nx,1:ny,1:nz,6)**2
+
+    ! Saving S_11, S_12, S_13
+    tauij(:,:,:,1) = wrk(:,:,:,4)
+    tauij(:,:,:,2) = wrk(:,:,:,5)
+    tauij(:,:,:,3) = wrk(:,:,:,6)
+
+    ! Calculating S_22, S_23, S_33
+    do k = 1, nz
+       do j = 1, ny
+          do i = 1, nx+1, 2
+
+             ! S_22, dv/dy
+             wrk(i  ,j,k,4) = - aky(k) * fields(i+1,j,k,2)
+             wrk(i+1,j,k,4) =   aky(k) * fields(i  ,j,k,2)
+
+             ! S_23, 0.5 (dv/dz + dw/dy)
+             wrk(i  ,j,k,5) = - half * ( akz(j) * fields(i+1,j,k,2) + aky(k) * fields(i+1,j,k,3) )
+             wrk(i+1,j,k,5) =   half * ( akz(j) * fields(i  ,j,k,2) + aky(k) * fields(i  ,j,k,3) )
+
+             ! S_33, dw/dz
+             wrk(i  ,j,k,6) = - akz(j) * fields(i+1,j,k,3)
+             wrk(i+1,j,k,6) =   akz(j) * fields(i  ,j,k,3)
+          end do
+       end do
+    end do
+
+    ! Converting them to real space and adding to turb_visc(:,:,:)
+    do n = 4,6
+       call xFFT3d(-1,n)
+    end do
+    turb_visc(1:nx,1:ny,1:nz) = turb_visc(1:nx,1:ny,1:nz) +       wrk(1:nx,1:ny,1:nz,4)**2
+    turb_visc(1:nx,1:ny,1:nz) = turb_visc(1:nx,1:ny,1:nz) + two * wrk(1:nx,1:ny,1:nz,5)**2
+    turb_visc(1:nx,1:ny,1:nz) = turb_visc(1:nx,1:ny,1:nz) +       wrk(1:nx,1:ny,1:nz,6)**2
+    ! now turb_visc contains S_ij S_ij
+
+    ! Saving S_22, S_23, S_33
+    tauij(:,:,:,4) = wrk(:,:,:,4)
+    tauij(:,:,:,5) = wrk(:,:,:,5)
+    tauij(:,:,:,6) = wrk(:,:,:,6)
+    ! now tauij(:,:,:,1:6) contains S_ij
+
+    ! Finishing up the turbulent viscosiy
+    ! making it (C_s Delta)^2 |S|, where |S| = sqrt(2 S_{ij} S_{ij})
+    turb_visc = sqrt( two * turb_visc)
+    turb_visc  = turb_visc * (c_smag * les_delta)**2
+
+    return
+  end subroutine les_get_turb_visc_smag_save_sij
+
+!================================================================================
 !================================================================================
 !  Calculation of turbulent viscosity turb_visc(:,:,:) - DLM model
 !================================================================================
@@ -1020,7 +1327,7 @@ contains
     integer :: i,j,k
     real*8  :: rkmax2, wmag2
 
-!!$    real*8 :: C_k = 0.05d0 ! This is take from Yoshizawa and Horiuti (1985)
+!!$    real*8 :: C_k = 0.05d0 ! This is taken from Yoshizawa and Horiuti (1985)
     real*8 :: C_k = 0.1d0 ! This is what works for this code.  Dunno why...
     real*8 :: sctmp, sctmp1
 
@@ -1259,14 +1566,14 @@ contains
     wrk(:,:,:,n1) = wrk(:,:,:,0)
     wrk(1:nx,1:ny,1:nz,n1) = wrk(1:nx,1:ny,1:nz,n1) * turb_visc(1:nx,1:ny,1:nz)
 
-!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>DEBUG+
-    ! writing out the energy transfer due to the viscosity
-    if (mod(itime,iwrite4).eq.0) then
-       tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,n1)
-       write(fname,"('pi_nu.',i6.6) ") itime
-       call write_tmp4
-    end if
-!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>DEBUG-
+!!$!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>DEBUG+
+!!$    ! writing out the energy transfer due to the viscosity
+!!$    if (mod(itime,iwrite4).eq.0) then
+!!$       tmp4(1:nx,1:ny,1:nz) = wrk(1:nx,1:ny,1:nz,n1)
+!!$       write(fname,"('pi_nu.',i6.6) ") itime
+!!$       call write_tmp4
+!!$    end if
+!!$!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>DEBUG-
 
 
 
@@ -1290,7 +1597,8 @@ contains
     end do
 
     ! if les_model=3 (DLM model + lag model for epsilon)
-    ! if les_model=3 (DSTM+DLM model + lag model for epsilon)
+    ! if les_model=7 (DSTM+DLM model + lag model for epsilon)
+    ! if les_model=10 (DSTM+DLM model + lag model for epsilon + Harlow model for scalars)
     ! then add the source term to the RHS for B
     if (les_model.eq.3 .or. les_model.eq.7) then
        do k = 1, nz
@@ -1544,7 +1852,7 @@ contains
     ! non-negative at the places where k_sgs = 0.    
     ! Basically we shut down the DSTM energy transfer where k<=0 
     ! and let the diffusion work.  
-!
+    ! 
     ! Formixed models, the viscous part of the model should provide
     ! enough positive energy transfer to over come the nagetiveness.
     ! Although that does not happen as fast as we want.
@@ -1742,8 +2050,371 @@ contains
 
   end subroutine m_les_dstm_vel_k_sources
 
-!================================================================================
-!================================================================================
-!================================================================================
 
+!================================================================================
+!================================================================================
+!  Calculating the subgrid stress tauij(:,:,:,:) using DSTM.  This routine 
+!  assumes that the SGS dissipation is closed using the lag-model.
+!  Using the fact that S_ij is calculated prior to calling this subroutine
+!  and is stored in the array tauij, we calculate the source term
+!  for (BT), the scalar number 3+n_scalars+1, and add it to the RHS for (BT).
+!================================================================================
+  subroutine m_les_get_tauij_dstm_source_BT
+
+    use m_filter_xfftw
+
+    implicit none
+    integer :: n1, n2, n3, n4, n5
+    integer :: n, i, j, k
+    integer :: n_bt, n_et
+
+    ! there are FIVE working arrays that we can use: wrk0 and
+    ! wrk(3+n_scalars+n_les+1....+4).  We use indicies n1,...,n5
+    ! in comments we'll refer to the arrays as wrk1...5
+    n1 = 0;
+    n2 = 3 + n_scalars + n_les + 1
+    n3 = 3 + n_scalars + n_les + 2
+    n4 = 3 + n_scalars + n_les + 3
+    n5 = 3 + n_scalars + n_les + 4
+
+    ! the numbers for the fields (BT) and (eps T)
+    n_bt = 3 + n_scalars + 1
+    n_et = 3 + n_scalars + 2
+
+    ! First calculate all 6 elements of the Leonard term
+    ! We can use only the first 4 arrays that we have.
+    ! The fifth array, wrk5, will contain the part of the source term for (BT)
+    ! that is given by the DSTM model
+    wrk(:,:,:,n5) = zip
+
+    ! L_11, L_22, L_33
+    do i = 1,3
+       wrk(:,:,:,n1) = fields(:,:,:,i)
+       call xFFT3d(-1,n1)
+       wrk(:,:,:,n1) = wrk(:,:,:,n1)**2
+       call xFFT3d(1,n1)
+       call filter_xfftw(n1)
+       call xFFT3d(-1,n1)
+
+       wrk(:,:,:,n2) = fields(:,:,:,i)
+       call filter_xfftw(n2)
+       call xFFT3d(-1,n2)
+       wrk(:,:,:,n1) = wrk(:,:,:,n1) - wrk(:,:,:,n2)**2
+       ! now wrk1 contains one of diagonal element of L_ij
+
+       ! adding the source term for (BT)
+       if (i.eq.1) j = 1
+       if (i.eq.2) j = 4
+       if (i.eq.3) j = 6
+       wrk(:,:,:,n5) = wrk(:,:,:,n5) - wrk(:,:,:,n1) * tauij(:,:,:,j)
+
+       ! Storing L_ij in tauij
+       tauij(:,:,:,j) = wrk(:,:,:,n1)
+    end do
+    ! now tauij1, tauij4, tauij6 contain L_11, L_22, L_33 in X-space
+
+    ! now do off-diagonal elements of tauij
+    ! n will be the corresponding index in the tauij array, since 
+    ! the elements of tauij are : tau_11, tau_12, 13, 22, 23, 33.
+    n = 0
+    do i = 1,3
+       do j = i,3
+          n = n + 1
+          if (i.lt.j) then
+             wrk(:,:,:,n1) = fields(:,:,:,i)
+             wrk(:,:,:,n2) = fields(:,:,:,j)
+             call xFFT3d(-1,n1)
+             call xFFT3d(-1,n2)
+             wrk(:,:,:,n1) = wrk(:,:,:,n1) * wrk(:,:,:,n2)
+             call xFFT3d(1,n1)
+             call filter_xfftw(n1)
+             call xFFT3d(-1,n1)
+
+             wrk(:,:,:,n3) = fields(:,:,:,i)
+             wrk(:,:,:,n4) = fields(:,:,:,j)
+             call filter_xfftw(n3)
+             call filter_xfftw(n4)
+             call xFFT3d(-1,n3)
+             call xFFT3d(-1,n4)
+
+             ! calculating L_ij
+             wrk(:,:,:,n1) = wrk(:,:,:,n1) - wrk(:,:,:,n3) * wrk(:,:,:,n4)
+
+             ! adding the source term for (BT)
+             wrk(:,:,:,n5) = wrk(:,:,:,n5) - wrk(:,:,:,n1) * tauij(:,:,:,n)
+
+             ! storing L_ij in tauij
+             tauij(:,:,:,n) = wrk(:,:,:,n1)
+
+          end if
+       end do
+    end do
+
+    ! calculating the trace of L_ij
+    wrk(:,:,:,n2) = tauij(:,:,:,1) + tauij(:,:,:,4) + tauij(:,:,:,6)
+
+    ! converting k_sgs to x-space and placing it in wrk1
+    ! note that k_sgs in this model is the sum (BT) + (eps T)
+    wrk(:,:,:,n1) = fields(:,:,:,n_bt) + fields(:,:,:,n_et)
+    call xFFT3d(-1,n1)
+
+    ! getting the scaling factor 2*k_sgs/L_kk
+    do k = 1,nz
+       do j = 1,ny
+          do i = 1,nx
+             if (wrk(i,j,k,n2) .lt. 1e-10) then
+                wrk(i,j,k,n1) = zip
+             else
+                wrk(i,j,k,n1) = 2.d0 * wrk(i,j,k,n1) / wrk(i,j,k,n2)
+             end if
+          end do
+       end do
+    end do
+
+    ! multiplying tauij by the scaling factor
+    do i = 1,6
+       tauij(:,:,:,i) = tauij(:,:,:,i) * wrk(:,:,:,n1)
+    end do
+
+    ! multiplying the source term for (BT) by the scaling factor
+    wrk(:,:,:,n5) = wrk(:,:,:,n5) * wrk(:,:,:,n1)
+
+    ! adding the source term Pi for (BT) to the RHS for (BT)
+    ! note: need to convert the source to F-space first
+    call xFFT3d(1,n5)
+    wrk(:,:,:,n_bt) = wrk(:,:,:,n_bt) + wrk(:,:,:,n5)
+
+    ! saving the energy transfer Pi to be output later
+    if (iammaster) production = production + wrk(1,1,1,n5) / real(nxyz_all)
+
+
+    return
+  end subroutine m_les_get_tauij_dstm_source_BT
+
+
+!================================================================================
+!================================================================================
+!  Calculate the SGS fluxes for all scalars using Harlow model.
+!  The timescale is 1/|S|.  |S| is taken from the turbulent viscosity that was
+!  calculated earlier and is in the array turb_visc.  The formula for turb_visc:
+!  turb_visc = C_mixed * (c_smag * Delta)^2 |S| 
+!  The formula for the SGS flux of a scalar using Harlow model is
+!  flux = d/dx ( 1/|S| tau_ij d(phi)/dx_i ) 
+!================================================================================
+  subroutine m_les_rhss_sgs_flux_harlow
+
+    implicit none
+
+    integer :: n, n1, n2, n3, n4, n5
+    integer :: i, j, k
+
+    ! these five work arrays are free, so we're using them
+    n1 = 0;
+    n2 = 3 + n_scalars + n_les + 1
+    n3 = 3 + n_scalars + n_les + 2
+    n4 = 3 + n_scalars + n_les + 3
+    n5 = 3 + n_scalars + n_les + 4
+
+    ! first, get the |S| from the turb_visc array and put it in wrk5
+    wrk(1:nx,:,:,n5) = turb_visc(1:nx,:,:) / (c_smag * les_delta)**2 / C_mixed
+    ! inverting it so we have the timescale 1/|S|
+    do k = 1,nz
+       do j = 1,ny
+          do i = 1,nx
+             if (abs(wrk(i,j,k,n5)) .lt. 1e-10) then
+                wrk(i,j,k,n5) = zip
+             else
+                wrk(i,j,k,n5) = 1.d0 / wrk(i,j,k,n5)
+             end if
+          end do
+       end do
+    end do
+    ! now wrk1 contains the timescale for the Harlow model
+
+    ! calculating the SGS fluxes for all scalars, including LES scalars
+    ! doing one scalar at a time
+    sgs_fluxes_scalars: do n = 1, n_scalars+n_les
+
+       ! get all derivatives of the scalar
+       wrk(:,:,:,n1) = fields(:,:,:,3+n)
+       call x_derivative(n1,'z',n3)
+       call x_derivative(n1,'y',n2)
+       call x_derivative(n1,'x',n1)
+       ! convert them to X-space
+       call xFFT3d(-1,n1)
+       call xFFT3d(-1,n2)
+       call xFFT3d(-1,n3)
+
+       ! component by component, calculate the vector tau_ij d(phi)/dx_j
+       ! multiply it by the timescale
+       ! take the derivative d/dx_i
+       ! add to the RHS of the scalar transport equation
+
+       ! i = 1 
+       wrk(:,:,:,n4) = tauij(:,:,:,1)*wrk(:,:,:,n1) + tauij(:,:,:,2)*wrk(:,:,:,n2) + tauij(:,:,:,3)*wrk(:,:,:,n3)
+       wrk(:,:,:,n4) = wrk(:,:,:,n4) * wrk(:,:,:,n5)
+       call xFFT3d(1,n4)
+       call x_derivative(n4,'x',n4)
+       ! adding to the RHS
+       wrk(:,:,:,3+n) = wrk(:,:,:,3+n) + wrk(:,:,:,n4)
+
+       ! i = 2 
+       wrk(:,:,:,n4) = tauij(:,:,:,2)*wrk(:,:,:,n1) + tauij(:,:,:,4)*wrk(:,:,:,n2) + tauij(:,:,:,5)*wrk(:,:,:,n3)
+       wrk(:,:,:,n4) = wrk(:,:,:,n4) * wrk(:,:,:,n5)
+       call xFFT3d(1,n4)
+       call x_derivative(n4,'y',n4)
+       ! adding to the RHS
+       wrk(:,:,:,3+n) = wrk(:,:,:,3+n) + wrk(:,:,:,n4)
+
+       ! i = 3 
+       wrk(:,:,:,n4) = tauij(:,:,:,3)*wrk(:,:,:,n1) + tauij(:,:,:,5)*wrk(:,:,:,n2) + tauij(:,:,:,6)*wrk(:,:,:,n3)
+       wrk(:,:,:,n4) = wrk(:,:,:,n4) * wrk(:,:,:,n5)
+       call xFFT3d(1,n4)
+       call x_derivative(n4,'z',n4)
+       ! adding to the RHS
+       wrk(:,:,:,3+n) = wrk(:,:,:,3+n) + wrk(:,:,:,n4)
+
+    end do sgs_fluxes_scalars
+
+    return
+  end subroutine m_les_rhss_sgs_flux_harlow
+!================================================================================
+!================================================================================
+!  Sources for the lag-model quantities (BT) and (eps*T) that arise from the 
+!  lag-model:
+!  *  for (BT) the source is (-B)
+!  * for (eps T) the sources are (+ B) and (- eps)
+!  
+!  This version caters to the model that does NOT have a separate transport
+!  equation for k_sgs.  Thus the number are 
+!  3+n_scalars+1 for (BT), and 3+n_scalars+2 for (eps*T) 
+!================================================================================
+  subroutine m_les_lag_model_sources_no_k
+
+    use x_fftw
+
+    implicit none
+    integer :: n, n1, n2, n3, n4, n5, n_bt, n_et
+    integer :: i, j, k
+
+    ! these five work arrays are free, so we're using them
+    n1 = 0;
+    n2 = 3 + n_scalars + n_les + 1
+    n3 = 3 + n_scalars + n_les + 2
+    n4 = 3 + n_scalars + n_les + 3
+    n5 = 3 + n_scalars + n_les + 4
+
+    ! the number for BT and (eps T)
+    n_bt = 3 + n_scalars + 1
+    n_et = 3 + n_scalars + 2
+
+
+    ! Currently T_B = 1/|S|.
+    ! This particular time scale has been calculated in  m_les_rhss_sgs_flux_harlow
+    ! and is contained in wrk5, so we do not need to calculate that again
+
+    ! Getting B from (B T_B).
+    ! - getting (B T_B) to real space
+    wrk(:,:,:,n1) = fields(:,:,:,n_bt)
+    call xFFT3d(-1,n1)
+    ! - Dividing by T_B (multiplying by |S|)
+    wrk(:,:,:,n1) = wrk(:,:,:,n1) / wrk(:,:,:,n5)
+    ! - converting back to Fourier space
+    call xFFT3d(1,n1)
+
+    ! Getting epsilon from (epsilon T_epsilon)
+    wrk(:,:,:,n2) = fields(:,:,:,n_et)
+    call xFFT3d(-1,n2)
+    ! Currently T_epsilon = C_T Delta^(2/3) / epsilon^(1/3).
+    ! Solving for epsilon:
+    wrk(:,:,:,n2) = max(wrk(:,:,:,n2), zip)
+    wrk(:,:,:,n2) = wrk(:,:,:,n2)**1.5D0 / (les_delta * C_T**1.5d0)
+    call xFFT3d(1,n2)
+
+    ! saving B and dissipation for output later
+    if (iammaster) B = B + wrk(1,1,1,n1) / real(nxyz_all)
+    if (iammaster) dissipation = dissipation + wrk(1,1,1,n2) / real(nxyz_all)
+
+
+    ! Now we have B and epsilon, so we can update the RHS for (BT) and (eps * T)
+    ! with the sources.  
+    ! The part of the energy transfer term (Pi) that came from the DSTM part of tauij
+    ! has been added to RHS for (BT) in m_les_get_tauij_dstm_source_BT.  
+    ! Now adding the sources and sinks that come purely from the lag-model.
+
+    ! updating the RHS for B (subtracting B)
+    ! note that DSTM part of Pi is already added in subroutine  m_les_get_tauij_dstm_source_BT
+    ! After this we only need to add the part of Pi that comes from the viscous part of tau_ij
+    ! that is calculated separately.
+    wrk(:,:,:,n_bt) = wrk(:,:,:,n_bt) - wrk(:,:,:,n1)
+
+    ! updating the RHS for (epsilon T) (adding B and subtracting epsilon)
+    wrk(:,:,:,n_et) = wrk(:,:,:,n_et) + wrk(:,:,:,n1) - wrk(:,:,:,n2)
+
+    ! adding the part of Pi that comes from the viscous part of the model for tau_ij
+    wrk(1:nx,:,:,n1) = turb_visc(1:nx,:,:)**3 / C_mixed**2 / (c_smag*les_delta)**4
+    call xFFT3d(1,n1)
+    wrk(:,:,:,n_bt) = wrk(:,:,:,n_bt) + wrk(:,:,:,n1)
+    ! saving the energy transfer to be output later
+    if (iammaster) production = production + wrk(1,1,1,n1) / real(nxyz_all)
+
+    return
+  end subroutine m_les_lag_model_sources_no_k
+
+!================================================================================
+!================================================================================
+!  Calculate the LES velocity sources from the array tauij(:,:,:,:)
+!================================================================================
+  subroutine les_add_vel_source_from_tauij
+
+    implicit none
+    integer :: n, n1, n2, n3, n4, n5
+    integer :: i, j, k
+
+    ! these five work arrays are free, so we're using them
+    n1 = 0;
+    n2 = 3 + n_scalars + n_les + 1
+    n3 = 3 + n_scalars + n_les + 2
+    n4 = 3 + n_scalars + n_les + 3
+    n5 = 3 + n_scalars + n_les + 4
+
+    ! First get tauij in Fourier space, all of them
+    do n = 1, 6
+       wrk(:,:,:,n1) = tauij(:,:,:,n)
+       call xFFT3d(1,n1)
+       tauij(:,:,:,n) = wrk(:,:,:,n1)
+    end do
+
+    ! Source for u
+    wrk(:,:,:,n1) = tauij(:,:,:,1)
+    wrk(:,:,:,n2) = tauij(:,:,:,2)
+    wrk(:,:,:,n3) = tauij(:,:,:,3)
+    call x_derivative(n1,'x',n1)
+    call x_derivative(n2,'y',n2)
+    call x_derivative(n3,'z',n3)
+    wrk(:,:,:,1) = wrk(:,:,:,1) - wrk(:,:,:,n1) - wrk(:,:,:,n2) - wrk(:,:,:,n3)
+
+    ! Source for v
+    wrk(:,:,:,n1) = tauij(:,:,:,2)
+    wrk(:,:,:,n2) = tauij(:,:,:,4)
+    wrk(:,:,:,n3) = tauij(:,:,:,5)
+    call x_derivative(n1,'x',n1)
+    call x_derivative(n2,'y',n2)
+    call x_derivative(n3,'z',n3)
+    wrk(:,:,:,2) = wrk(:,:,:,2) - wrk(:,:,:,n1) - wrk(:,:,:,n2) - wrk(:,:,:,n3)
+
+    ! Source for w
+    wrk(:,:,:,n1) = tauij(:,:,:,3)
+    wrk(:,:,:,n2) = tauij(:,:,:,5)
+    wrk(:,:,:,n3) = tauij(:,:,:,6)
+    call x_derivative(n1,'x',n1)
+    call x_derivative(n2,'y',n2)
+    call x_derivative(n3,'z',n3)
+    wrk(:,:,:,3) = wrk(:,:,:,3) - wrk(:,:,:,n1) - wrk(:,:,:,n2) - wrk(:,:,:,n3)
+
+    return
+  end subroutine les_add_vel_source_from_tauij
+
+!================================================================================
+!================================================================================
 end module m_les
