@@ -1,7 +1,7 @@
 !================================================================================
 ! Module contains interface to OpenMPI
 !
-! Time-stamp: <2008-12-18 17:46:28 (chumakov)>
+! Time-stamp: <2009-08-20 14:22:13 (chumakov)>
 !================================================================================
 
 
@@ -9,6 +9,12 @@ module m_openmpi
 !================================================================================
   implicit none
   include 'mpif.h'
+
+  ! Uncomment this for the systems that do not have OpenMPI
+  ! In OpenMPI, the parameter MPI_INTEGER_KIND is defined in 'mpif.h'
+  ! With other MPI implementations, this parameter has to be defined manually.
+!  integer MPI_INTEGER_KIND
+!  parameter (MPI_INTEGER_KIND = 4)
 
   ! --- MPI variables
   logical :: iammaster
