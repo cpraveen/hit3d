@@ -11,14 +11,11 @@ subroutine rhs_scalars
 
   implicit none
 
-  integer :: i, j, k, n, n1, n2, nv
+  integer :: i, j, k, n, n1, n2, nv, ns_lo, ns_hi
   real*8  :: rtmp1, rtmp2, wnum2, r11, r12, r21, r22, r31, r32
 
-!!$  write(out,*) "in rhs_scalars"; call flush(out)
   ! calculate turbulent viscosity, if any
   if (les) call les_get_turb_visc
-!!$  write(out,*) "in rhs_scalars again"; call flush(out)
-
 
   ! If we're not advancing scalars, put the real-space velocities 
   ! in wrk1...3 and return
@@ -28,14 +25,21 @@ subroutine rhs_scalars
   ! also if doing LES and n_les (the # of les-related auxilary scalars) is
   ! greater than 0, then we need to transport these LES-related scalars,
   ! even if n_scalars=0.
+
+  ! thus we do the obligatory part (tranfer velocities to X-space) and quit
+  ! only when we are not transporting any scalars and if there are no
+  ! LES-related scalars.
   if (.not.int_scalars .and. n_les .eq. 0) then
-     ! converting velocities to the real space
+     ! converting velocities to the real space and returning
      wrk(:,:,:,1:3) = fields(:,:,:,1:3)
      do n = 1,3
         call xFFT3d(-1,n)
      end do
      return
   end if
+
+  ! making the RHS for all scalars zero
+  wrk(:,:,:,4:3+n_scalars+n_les) = zip
 
 !--------------------------------------------------------------------------------
 !  If dealias=0, performing the 2/3 rule dealiasing on scalars
@@ -49,14 +53,27 @@ subroutine rhs_scalars
         call xFFT3d(-1,n)
      end do
 
-     ! Do each scalar one at a time.
+     ! Do each scalar one at a time.  Keep the velocities in wrk1:3 intact 
+     ! because they are needed later.
 
-     ! Trying to keep the velocities in wrk1:3 intact because they
-     ! are needed later 
-     do n = 1, n_scalars + n_les
+     ! first we need to know which scalars do we want to transport.
+     ! There are three cases:
+     ! (0) No LES extra scalars, and passive scalars have not been initialized yet
+     ! Thus this subroutine calculates the IFFT of velocities and exits.
+     ! This is taken care of earlier.
+     ! (1) Both passive scalars and LES extra scalars are transported
+     ! This is possible when n_les > 0 and int_scalars=.true.
+     ! (2) Only LES extra scalars are transported
+     ! This is possible if and only if (.not.int_scalars .and. n_les>0)
+     ! 
+     ! The last two cases are taken care of by prescribing ns_lo and ns_hi, the 
+     ! smallest and largest number of the scalar that needs to be transported.
 
-!!$        write(out,*) "calculating RHS for scalar #",n
-!!$        call flush(out)
+     ns_lo = 1; 
+     ns_hi = n_scalars + n_les
+     if (.not.int_scalars) ns_lo = n_scalars + 1
+
+     do n = ns_lo, ns_hi
 
         wrk(:,:,:,0) = fields(:,:,:,3+n)
         call xFFT3d(-1,0)
@@ -66,9 +83,6 @@ subroutine rhs_scalars
            wrk(:,:,:,n+2+i) = wrk(:,:,:,0) * wrk(:,:,:,i)
            call xFFT3d(1,n+2+i)
         end do
-
-!!$        write(out,*) "  got the products",n
-!!$        call flush(out)
 
         ! Assembling the RHS in wrk(:,:,:,3+n)
         do k = 1,nz
@@ -376,9 +390,9 @@ subroutine rhs_scalars
   end if phase_shifting_dealiasing
 
 
-  ! ----------------------------------------------------------------------
-  ! Add LES to the RHS of all the scalars
-  ! ----------------------------------------------------------------------
+!--------------------------------------------------------------------------------
+!  Add LES to the RHS of all the scalars
+!--------------------------------------------------------------------------------
   les_active: if (les) then
      call les_rhs_scalars
   end if les_active

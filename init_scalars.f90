@@ -1,31 +1,47 @@
+!================================================================================
+!================================================================================
+!  Initialization of passive scalars
+!================================================================================
+
 subroutine init_scalars
 
   use m_parameters
   use m_io
   use m_fields
+  use x_fftw, only : ialias
 
   implicit none
 
-  integer :: n_scalar
+  integer :: n_scalar, i, j, k
 
   write(out,*) 'Generating scalars'
   call flush(out)
 
-
   do n_scalar = 1,n_scalars
-
      call init_scalar(n_scalar)
-
   end do
 
   write(out,*) "Generated the scalars."
   call flush(out)
+
+  ! now making sure that the scalars do not have any high
+  ! Fourier harmonics by zeroing out everything that has a wavenumber
+  ! that potentially can produce aliasing
+  do k = 1, nz
+     do j = 1, ny
+        do i = 1, nx+2
+           if (ialias(i,j,k).gt.0) fields(i,j,k,4:3+n_scalars) = zip
+        end do
+     end do
+  end do
 
   return
 
 end subroutine init_scalars
 
 !================================================================================
+!================================================================================
+
 subroutine init_scalar(n_scalar)
 
   use m_parameters
@@ -58,7 +74,6 @@ subroutine init_scalar(n_scalar)
   else
      ! if the last two digits are bigger than 10, the scalar is generated
      ! in physical space and then transformed in the Fourier space
-
      call init_scalar_space(n_scalar)
 
   end if
@@ -91,9 +106,7 @@ subroutine init_scalar_spectrum(n_scalar)
 
   real*8 :: wmag, wmag2, ratio, fac
 
-
-!================================================================================
-
+!--------------------------------------------------------------------------------
   write(out,*) " Generating scalar # ",n_scalar
   call flush(out)
 
@@ -104,11 +117,9 @@ subroutine init_scalar_spectrum(n_scalar)
   allocate( e_spec(kmax), e_spec1(kmax), hits(kmax), hits1(kmax), &
        rr(nx+2), stat=ierr)
 
-
   ! bringing the processors to their own places in the random sequence
   ! ("2" is there because we're generating two random number fields
   ! for each scalar field
-
   ! using i8 because it's int*8
   do i8 = 1,myid*(nx+2)*ny*nz*2
      fac = random(RN2)
@@ -169,7 +180,6 @@ subroutine init_scalar_spectrum(n_scalar)
   call MPI_REDUCE(hits1,hits,count,MPI_INTEGER8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
   call MPI_REDUCE(e_spec1,e_spec,count,MPI_REAL8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
 
-
   ! now the master node counts the energy density in each shell
   if (myid.eq.0) then
      fac = four/three * PI / two
@@ -192,8 +202,6 @@ subroutine init_scalar_spectrum(n_scalar)
 !-------------------------------------------------------------------------------
 !  Now make the spectrum to be as desired
 !-------------------------------------------------------------------------------
-
-
   ! first, define the desired spectrum
   do k = 1,kmax
 
@@ -224,12 +232,9 @@ subroutine init_scalar_spectrum(n_scalar)
   ! normalize it so it has the unit total energy
   e_spec1 = e_spec1 / sum(e_spec1(1:kmax))
 
-
   ! now go over all Fourier shells and multiply the velocities in a shell by
   ! the sqrt of ratio of the resired to the current spectrum
   fields(:,:,:,3+n_scalar) = zip
-
-
 
   do k = 1,nz
      do j = 1,ny
@@ -271,12 +276,10 @@ subroutine init_scalar_spectrum(n_scalar)
      end do
      fields(:,:,:,3+n_scalar) = wrk(:,:,:,0)
 
-
   end if
 
   ! deallocate work arrays
   deallocate(e_spec, e_spec1, rr, hits, hits1, stat=ierr)
-
 
   return
 end subroutine init_scalar_spectrum
@@ -305,7 +308,6 @@ subroutine init_scalar_space(n_scalar)
 
   sc_type = scalar_type(n_scalar)
   ic_type = sc_type - (sc_type/100)*100
-
 
   select case (ic_type)
 
@@ -359,6 +361,8 @@ subroutine init_scalar_space(n_scalar)
      ! putting it into the scalar array
      fields(:,:,:, 3+n_scalar) = wrk(:,:,:,0)
 
+     ! making sure that the mean is ero
+     if (iammaster) fields(1,1,1,3+n_scalar) = zip
 
   case default
      write(out,*) "INIT_SCALARS: UNEXPECTED SCALAR TYPE: ", scalar_type(n_scalar)
@@ -368,9 +372,6 @@ subroutine init_scalar_space(n_scalar)
 
   write(out,*) "Initialized the scalars."
   call flush(out)
-
-  return
-
 
   return
 

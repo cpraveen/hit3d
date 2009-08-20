@@ -2,7 +2,7 @@
 ! M_PARAMETERS - module for all parameters in the calculation: 
 !                such as array dimensions, reynolds numbers, switches/flags etc.
 !
-! Time-stamp: <2009-04-30 12:07:52 (chumakov)>
+! Time-stamp: <2009-08-19 11:50:11 (chumakov)>
 ! Time-stamp: <2008-11-20 17:27:59 MST (vladimirova)>
 !================================================================================
 
@@ -407,6 +407,13 @@ contains
     read(in,*)      
     write(out,"(70('-'))")
     call flush(out)
+
+    ! making sure that if the LES mode is on, the dealiasing is 3/2-rule
+    if (les_model .gt. 0 .and. dealias .ne. 0) then
+       dealias = 0
+       write(out,*) "*** LES mode, changing dealias to 0."
+       call flush(out)
+    end if
 
     ! -------------------------------------------------------------
 
