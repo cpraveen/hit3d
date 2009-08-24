@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-08-20 13:40:19 (chumakov)>
+!  Time-stamp: <2009-08-24 11:47:58 (chumakov)>
 !================================================================================
 module m_les
 
@@ -376,29 +376,21 @@ contains
     ! we need to have SC and PE numbers defined for those quantities.  For this we
     ! need to re-allocate the arrays SC and PE
     additional_scalars: if (n_les .gt. 0) then
-
        write(out,*) "Adding elements to arrays PE and SC for the LES-related scalars..."
        call flush(out)
-
        allocate(sctmp(1:n_scalars+n_les), stat=ierr)
        sctmp(1:n_scalars) = sc(1:n_scalars)
        sctmp(n_scalars+1:n_scalars+n_les) = one
-
        if (allocated(sc)) deallocate(sc)
        allocate(sc(1:n_scalars+n_les))
        sc = sctmp
-
        if (allocated(pe)) deallocate(pe)
        allocate(pe(1:n_scalars+n_les))
        pe = nu / sc
-
        deallocate(sctmp)
-
        write(out,*) " ...done."
        call flush(out)
-
     end if additional_scalars
-
 
     write(out,*) 'initialized LES.'
     call flush(out)
@@ -675,8 +667,6 @@ contains
        ! The sources are directly computed from the array tauij
        ! so we do not need a separate array for them
        call les_add_vel_source_from_tauij
-       ! also apply turbulent viscosity to velocities
-       call les_rhsv_turb_visc
 
     case default
        write(out,*) 'LES_RHS_VELOCITY: invalid value of les_model:',les_model
@@ -838,9 +828,11 @@ contains
 
        ! Dissipation term in the k-equation is closed via lag-model
 
-       ! first we add the turbulent diffusion to all scalars:
-       ! (BT), (eps T) and the passive scalars
-       call m_les_rhss_turb_visc
+       ! first we add the turbulent diffusion to (BT) and (eps T)
+       ! (no turbulent diffusion for the passive scalars, since they are taken
+       ! care of by the Harlow model later)
+       call m_les_rhss_turb_visc1(3+n_scalars+1)
+       call m_les_rhss_turb_visc1(3+n_scalars+2)
 
        ! now calculate the SGS stress tauij and calculate the source term Pi 
        ! for (BT), the scalar with the number 3+n_scalars+1
@@ -848,9 +840,8 @@ contains
        ! Store the SGS stress in the array tauij.
        call m_les_get_tauij_dstm_source_BT
 
-       ! get the SGS fluxes for all scalars, using Harlow model
-       ! this affects passive scalars only
-       call m_les_rhss_sgs_flux_harlow
+       ! get the SGS fluxes for all passive scalars, using Harlow model
+       if (n_scalars.gt.0) call m_les_rhss_sgs_flux_harlow
 
        ! get the lag-model sources for (BT) and (eps T) and add those to RHSs
        ! the "no_k" means that we calculate k_sgs as (BT)+(eps T), effectively
@@ -858,13 +849,11 @@ contains
        call m_les_lag_model_sources_no_k
 
 !--------------------------------------------------------------------------------
-
     case default
        write(out,*) 'LES_RHS_SCALARS: invalid value of les_model:',les_model
        call flush(out)
        call my_exit(-1)
     end select
-
 
 !--------------------------------------------------------------------------------
 !  Making sure that we are not getting any aliasing errors. That is done by 
@@ -900,8 +889,6 @@ contains
        production = zip
        dissipation = zip
     end if
-
-
 !--------------------------------------------------------------------------------
     return
   end subroutine les_rhs_scalars
@@ -915,7 +902,6 @@ contains
 
     use x_fftw
     implicit none
-
 
     integer :: i, j, k, n
     real(kind=8) :: rtmp
@@ -1039,64 +1025,68 @@ contains
 !    the turb. viscosity is supposed to be in the array turb_visc(nx,ny,nz) 
 !================================================================================
   subroutine m_les_rhss_turb_visc
+    implicit none
+    integer :: i
+    do i = 4, 3+n_scalars+n_les
+       call m_les_rhss_turb_visc1(i)
+    end do
+    return
+  end subroutine m_les_rhss_turb_visc
+
+!================================================================================
+!  Turbulent viscosity for one single field #n (or, scalar number n-3)
+!================================================================================
+  subroutine m_les_rhss_turb_visc1(n)
 
     use x_fftw
     implicit none
 
     integer :: i, j, k, n, tmp1, tmp2
     character :: dir
-    real(kind=8) :: rtmp
 
     ! have two arrays available as work arrays: wrk 3+n_scalars+n_les+1 and +2
     tmp1 = 3 + n_scalars + n_les + 1
     tmp2 = 3 + n_scalars + n_les + 2
 
-    ! For every scalar (passive or LES active scuch as k_sgs), add turbulent
-    ! viscosity to the RHS
-    les_rhs_all_scalars: do n = 4, 3 + n_scalars + n_les
+    ! computing the second derivative, multiplying it by turb_visc
+    ! and adding to the RHS (that is contained in wrk(n))
 
-       ! computing the second derivative, multiplying it by turb_visc
-       ! and adding to the RHS (that is contained in wrk(n))
+    wrk(:,:,:,tmp1) = fields(:,:,:,n)
+    wrk(:,:,:,0) = zip
 
-       wrk(:,:,:,tmp1) = fields(:,:,:,n)
-       wrk(:,:,:,0) = zip
+    directions: do i = 1,3
+       if (i.eq.1) dir = 'x'
+       if (i.eq.2) dir = 'y'
+       if (i.eq.3) dir = 'z'
 
-       directions: do i = 1,3
-          if (i.eq.1) dir = 'x'
-          if (i.eq.2) dir = 'y'
-          if (i.eq.3) dir = 'z'
+       ! taking the first derivatite, multiplying by the turb_visc
+       ! then taking another derivative and adding the result to wrk0
+       call x_derivative(tmp1, dir, tmp2)
+       call xFFT3d(-1,tmp2)
+       wrk(1:nx, 1:ny, 1:nz, tmp2) = wrk(1:nx, 1:ny, 1:nz, tmp2) * turb_visc(1:nx, 1:ny, 1:nz)
+       call xFFT3d(1,tmp2)
+       call x_derivative(tmp2, dir, tmp2)
 
-          ! taking the first derivatite, multiplying by the turb_visc
-          ! then taking another derivative and adding the result to wrk0
-          call x_derivative(tmp1, dir, tmp2)
-          call xFFT3d(-1,tmp2)
-          wrk(1:nx, 1:ny, 1:nz, tmp2) = wrk(1:nx, 1:ny, 1:nz, tmp2) * turb_visc(1:nx, 1:ny, 1:nz)
-          call xFFT3d(1,tmp2)
-          call x_derivative(tmp2, dir, tmp2)
+       ! following Yoshizawa and Horiuti (1985), the viscosity in the scalar equation
+       ! is twice the viscosity used in the production of k_sgs
+       ! (Journal of Phys. Soc. Japan, V.54 N.8, pp.2834-2839)
+       ! wrk(1:nx, 1:ny, 1:nz, tmp2) = two * wrk(1:nx, 1:ny, 1:nz, tmp2)
 
-          ! following Yoshizawa and Horiuti (1985), the viscosity in the scalar equation
-          ! is twice the viscosity used in the production of k_sgs
-          ! (Journal of Phys. Soc. Japan, V.54 N.8, pp.2834-2839)
-          !wrk(1:nx, 1:ny, 1:nz, tmp2) = two * wrk(1:nx, 1:ny, 1:nz, tmp2)
+       wrk(:,:,:,0) = wrk(:,:,:,0) + wrk(:,:,:,tmp2)
+    end do directions
 
-          wrk(:,:,:,0) = wrk(:,:,:,0) + wrk(:,:,:,tmp2)
-       end do directions
-
-       ! adding the d/dx ( nu_t d phi/dx) to the RHS for the scalar (field #n)
-       ! only adding the Fourier modes that are not producing any aliasing
-       do k = 1, nz
-          do j = 1, ny
-             do i = 1, nx+2
-                if (ialias(i,j,k) .eq. 0) wrk(i,j,k,n) = wrk(i,j,k,n) + wrk(i,j,k,0)
-             end do
+    ! adding the d/dx ( nu_t d phi/dx) to the RHS for the scalar (field #n)
+    ! only adding the Fourier modes that are not producing any aliasing
+    do k = 1, nz
+       do j = 1, ny
+          do i = 1, nx+2
+             if (ialias(i,j,k) .eq. 0) wrk(i,j,k,n) = wrk(i,j,k,n) + wrk(i,j,k,0)
           end do
        end do
-
-    end do les_rhs_all_scalars
+    end do
 
     return
-  end subroutine m_les_rhss_turb_visc
-
+  end subroutine m_les_rhss_turb_visc1
 
 !================================================================================
 !================================================================================
@@ -1131,9 +1121,6 @@ contains
        ! calculating the turbulent viscosity and saving the strain in the
        ! array for the SGS stress
        call les_get_turb_visc_smag_save_sij
-       ! making turbulent viscosity a fraction of what it is since this is a
-       ! mixed model
-       turb_visc = C_mixed * turb_visc
 
     case default
        write(out,*) "LES_GET_TURB_VISC: les_model: ", les_model
@@ -1420,48 +1407,6 @@ contains
     call flush(out)
     fields(:,:,:,n_k) = 0.1d0
     call xFFT3d_fields(1,n_k)
-    return
-
-
-    do i = 1, 3
-       wrk(:,:,:,1) = fields(:,:,:,i)
-       call x_derivative(1, 'x', 2)
-       call x_derivative(1, 'y', 3)
-       call x_derivative(1, 'z', 4)
-
-       call xFFT3d(-1,2)
-       call xFFT3d(-1,3)
-       call xFFT3d(-1,4)
-
-       fields(:,:,:,n_k) = fields(:,:,:,n_k) + wrk(:,:,:,2)**2
-       fields(:,:,:,n_k) = fields(:,:,:,n_k) + wrk(:,:,:,3)**2
-       fields(:,:,:,n_k) = fields(:,:,:,n_k) + wrk(:,:,:,4)**2
-    end do
-
-    ! put k_sgs in real space into fields(:,:,:,n_k)
-    fields(:,:,:,n_k) = fields(:,:,:,n_k) * les_delta**2 / 12.d0
-
-    write(out,*) "m_les_dlm_k_init: minval(k)=",minval(fields(1:nx,1:ny,1:nz,n_k))
-    call flush(out)
-
-
-    ! convert to Fourier space and dealias
-    call xFFT3d_fields(1,n_k)
-
-    do k = 1, nz
-       do j = 1, ny
-          do i = 1, nx+2
-             if (ialias(i,j,k) .gt. 0) fields(i,j,k,n_k) = zip
-          end do
-       end do
-    end do
-
-    wrk(:,:,:,0) = fields(:,:,:,n_k)
-    call xFFT3d(-1,0)
-    write(out,*) "m_les_dlm_k_init: minval(k)=",minval(wrk(1:nx,1:ny,1:nz,0))
-    call flush(out)
-
-
     return
   end subroutine m_les_dlm_k_init
 
@@ -2053,8 +1998,8 @@ contains
 
 !================================================================================
 !================================================================================
-!  Calculating the subgrid stress tauij(:,:,:,:) using DSTM.  This routine 
-!  assumes that the SGS dissipation is closed using the lag-model.
+!  Calculating the subgrid stress tauij(:,:,:,:) using mixed model: DSTM+C_m*SM.  
+!  Assume that the SGS dissipation is closed using the lag-model.
 !  Using the fact that S_ij is calculated prior to calling this subroutine
 !  and is stored in the array tauij, we calculate the source term
 !  for (BT), the scalar number 3+n_scalars+1, and add it to the RHS for (BT).
@@ -2077,50 +2022,103 @@ contains
     n4 = 3 + n_scalars + n_les + 3
     n5 = 3 + n_scalars + n_les + 4
 
-    ! the numbers for the fields (BT) and (eps T)
+    ! the numbers for the field (BT)
     n_bt = 3 + n_scalars + 1
     n_et = 3 + n_scalars + 2
 
-    ! First calculate all 6 elements of the Leonard term
-    ! We can use only the first 4 arrays that we have.
-    ! The fifth array, wrk5, will contain the part of the source term for (BT)
-    ! that is given by the DSTM model
-    wrk(:,:,:,n5) = zip
-
-    ! L_11, L_22, L_33
+    ! L_11, L_22, L_33 -> wrk1, wrk2, wrk3
     do i = 1,3
-       wrk(:,:,:,n1) = fields(:,:,:,i)
-       call xFFT3d(-1,n1)
-       wrk(:,:,:,n1) = wrk(:,:,:,n1)**2
-       call xFFT3d(1,n1)
-       call filter_xfftw(n1)
-       call xFFT3d(-1,n1)
+       wrk(:,:,:,n4) = fields(:,:,:,i)
+       call xFFT3d(-1,n4)
+       wrk(:,:,:,n4) = wrk(:,:,:,n4)**2
+       call xFFT3d(1,n4)
+       call filter_xfftw(n4)
+       call xFFT3d(-1,n4)
 
-       wrk(:,:,:,n2) = fields(:,:,:,i)
-       call filter_xfftw(n2)
-       call xFFT3d(-1,n2)
-       wrk(:,:,:,n1) = wrk(:,:,:,n1) - wrk(:,:,:,n2)**2
-       ! now wrk1 contains one of diagonal element of L_ij
+       wrk(:,:,:,n5) = fields(:,:,:,i)
+       call filter_xfftw(n5)
+       call xFFT3d(-1,n5)
 
-       ! adding the source term for (BT)
-       if (i.eq.1) j = 1
-       if (i.eq.2) j = 4
-       if (i.eq.3) j = 6
-       wrk(:,:,:,n5) = wrk(:,:,:,n5) - wrk(:,:,:,n1) * tauij(:,:,:,j)
-
-       ! Storing L_ij in tauij
-       tauij(:,:,:,j) = wrk(:,:,:,n1)
+       ! putting L_ii (no summation implied) in wrk(i)
+       if (i.eq.1) n = n1
+       if (i.eq.2) n = n2
+       if (i.eq.3) n = n3
+       wrk(:,:,:,n) = wrk(:,:,:,n4) - wrk(:,:,:,n5)**2
     end do
-    ! now tauij1, tauij4, tauij6 contain L_11, L_22, L_33 in X-space
 
-    ! now do off-diagonal elements of tauij
-    ! n will be the corresponding index in the tauij array, since 
+    ! putting the trace of L_ij, L_ii (summation implied) into wrk4
+    wrk(:,:,:,n4) = wrk(:,:,:,n1) + wrk(:,:,:,n2) + wrk(:,:,:,n3)
+
+    ! putting k_sgs into wrk5 and converting it to x-space
+    ! note that k_sgs in this model is the sum (BT) + (eps T)
+    wrk(:,:,:,n5) = fields(:,:,:,n_bt) + fields(:,:,:,n_et)
+    call xFFT3d(-1,n5)
+
+    ! compute the scaling factor 2*k_sgs/L_kk, and put it into wrk4
+    do k = 1,nz
+       do j = 1,ny
+          do i = 1,nx
+             if (wrk(i,j,k,n4) .lt. 1e-10) then
+                wrk(i,j,k,n4) = zip
+             else
+                wrk(i,j,k,n4) = two * wrk(i,j,k,n5) / wrk(i,j,k,n4)
+             end if
+          end do
+       end do
+    end do
+
+    ! now we want to do two things simultaneously:
+    ! 1) compute tau_ij = 2k_sgs/L_kk L_ij - C_mixed * 2 * turb_visc * S_ij
+    ! 2) compute the energy transfer term tau_ij S_ij
+    ! the way to do this:
+    ! - for each ij, compute -L_ij S_ij and add it to wrk5
+    ! - after that compute the true tau_ij and put it in tauij(...)
+    ! - when all indicies (ij) are processed, multiply the wrk5 by wrk4 (scaling factor)
+    ! - after that add C_mixed turb_visc |S|^2 to wrk5
+    ! thus the array tauij will contain tau_ij (full version, both parts of the mixed model)
+    ! and wrk5 will contain -(tau_ij S_ij) = Pi, the energy transfer term
+
+    ! computing the diagonal elements of tauij
+    ! note that right now tauij contains the elements of S_ij
+    ! and S_ij should be a part of tauij.  Thus the memory acrobatics.
+
+    ! putting -(L_ij S_ij) into wrk5 (only diagonal elements so far)
+    wrk(:,:,:,n5) = &
+         - wrk(:,:,:,n1) * tauij(:,:,:,1) &
+         - wrk(:,:,:,n2) * tauij(:,:,:,4) &
+         - wrk(:,:,:,n3) * tauij(:,:,:,6) 
+
+    ! computing the diagonal elements of tau_ij
+    tauij(1:nx,:,:,1) = &
+         wrk(1:nx,:,:,n4) * wrk(1:nx,:,:,n1) - &
+         C_mixed * two * turb_visc(1:nx,:,:) * tauij(1:nx,:,:,1)
+    tauij(1:nx,:,:,4) = &
+         wrk(1:nx,:,:,n4) * wrk(1:nx,:,:,n2) - &
+         C_mixed * two * turb_visc(1:nx,:,:) * tauij(1:nx,:,:,4)
+    tauij(1:nx,:,:,6) = &
+         wrk(1:nx,:,:,n4) * wrk(1:nx,:,:,n3) - &
+         C_mixed * two * turb_visc(1:nx,:,:) * tauij(1:nx,:,:,6)
+
+    ! currently wrk4 has the scaling factor from DSTM model: (2k_sgs/L_kk)
+    ! and wrk5 has the part of the energy transfer term given by DSTM model 
+    ! (only diagonal terms so far),
+    ! not the whole mixed model
+    ! this means that the free arrays are wrk1...3
+
+    ! computing the off-diagonal parts of tau_ij and their contribution to the energy tansfer
+    ! the index n will be the corresponding index in the tauij array, since 
     ! the elements of tauij are : tau_11, tau_12, 13, 22, 23, 33.
+
+    ! NOTE: This is done in an inefficient way, with a good possibility of a speedup
+    ! because filtering of all velocities is done twice.
+
     n = 0
     do i = 1,3
        do j = i,3
           n = n + 1
           if (i.lt.j) then
+
+             ! computing L_ij
              wrk(:,:,:,n1) = fields(:,:,:,i)
              wrk(:,:,:,n2) = fields(:,:,:,j)
              call xFFT3d(-1,n1)
@@ -2130,63 +2128,50 @@ contains
              call filter_xfftw(n1)
              call xFFT3d(-1,n1)
 
-             wrk(:,:,:,n3) = fields(:,:,:,i)
-             wrk(:,:,:,n4) = fields(:,:,:,j)
+             wrk(:,:,:,n2) = fields(:,:,:,i)
+             wrk(:,:,:,n3) = fields(:,:,:,j)
+             call filter_xfftw(n2)
              call filter_xfftw(n3)
-             call filter_xfftw(n4)
+             call xFFT3d(-1,n2)
              call xFFT3d(-1,n3)
-             call xFFT3d(-1,n4)
 
              ! calculating L_ij
-             wrk(:,:,:,n1) = wrk(:,:,:,n1) - wrk(:,:,:,n3) * wrk(:,:,:,n4)
+             wrk(:,:,:,n1) = wrk(:,:,:,n1) - wrk(:,:,:,n2) * wrk(:,:,:,n3)
 
-             ! adding the source term for (BT)
-             wrk(:,:,:,n5) = wrk(:,:,:,n5) - wrk(:,:,:,n1) * tauij(:,:,:,n)
+             ! adding the (-L_ij S_ij) to the transfer term in wrk5
+             ! note that since these are off-diagonal terms, they enter the
+             ! summation twice, thus we need to multiply them by two
+             wrk(:,:,:,n5) = wrk(:,:,:,n5) - two * wrk(:,:,:,n1) * tauij(:,:,:,n)
 
-             ! storing L_ij in tauij
-             tauij(:,:,:,n) = wrk(:,:,:,n1)
+             ! computing the full tau_ij and putting it into tauij(n)
+             tauij(1:nx,:,:,n) = &
+                  wrk(1:nx,:,:,n4) * wrk(1:nx,:,:,n1) - &
+                  C_mixed * two * turb_visc(1:nx,:,:) * tauij(1:nx,:,:,n)
 
           end if
        end do
     end do
 
-    ! calculating the trace of L_ij
-    wrk(:,:,:,n2) = tauij(:,:,:,1) + tauij(:,:,:,4) + tauij(:,:,:,6)
+    ! now tauij(1..6) contain the full mixed model for tau_ij
+    ! and wrk5 contains the sum:  -L_ij S_ij
+    ! to compute the full energy transfer term we need to multiply wrk5 by
+    ! the scalaing factor first and then add
+    ! C_mixed * turb_visc * |S|^2.  Since the expression for turb_visc
+    ! contains |S|, we can algebraically solve for |S| and add the missing
+    ! part without re-calculating S_ij.
 
-    ! converting k_sgs to x-space and placing it in wrk1
-    ! note that k_sgs in this model is the sum (BT) + (eps T)
-    wrk(:,:,:,n1) = fields(:,:,:,n_bt) + fields(:,:,:,n_et)
-    call xFFT3d(-1,n1)
+    ! multiplying wrk5 by the scaling factor
+    wrk(:,:,:,n5) = wrk(:,:,:,n5) * wrk(:,:,:,n4)
 
-    ! getting the scaling factor 2*k_sgs/L_kk
-    do k = 1,nz
-       do j = 1,ny
-          do i = 1,nx
-             if (wrk(i,j,k,n2) .lt. 1e-10) then
-                wrk(i,j,k,n1) = zip
-             else
-                wrk(i,j,k,n1) = 2.d0 * wrk(i,j,k,n1) / wrk(i,j,k,n2)
-             end if
-          end do
-       end do
-    end do
+    ! adding the part of Pi that comes from the viscous part of the model for tau_ij
+    wrk(1:nx,:,:,n5) = wrk(1:nx,:,:,n5) + turb_visc(1:nx,:,:)**3 / C_mixed**2 / (c_smag*les_delta)**4
 
-    ! multiplying tauij by the scaling factor
-    do i = 1,6
-       tauij(:,:,:,i) = tauij(:,:,:,i) * wrk(:,:,:,n1)
-    end do
-
-    ! multiplying the source term for (BT) by the scaling factor
-    wrk(:,:,:,n5) = wrk(:,:,:,n5) * wrk(:,:,:,n1)
-
-    ! adding the source term Pi for (BT) to the RHS for (BT)
-    ! note: need to convert the source to F-space first
+    ! converting the energy transfer to F-space and adding to the RHS for (BT)
     call xFFT3d(1,n5)
     wrk(:,:,:,n_bt) = wrk(:,:,:,n_bt) + wrk(:,:,:,n5)
 
-    ! saving the energy transfer Pi to be output later
-    if (iammaster) production = production + wrk(1,1,1,n5) / real(nxyz_all)
-
+    ! saving the mean energy transfer <Pi> for statistics file
+    if (iammaster) production = wrk(1,1,1,n5) / real(nxyz_all)
 
     return
   end subroutine m_les_get_tauij_dstm_source_BT
@@ -2229,7 +2214,7 @@ contains
           end do
        end do
     end do
-    ! now wrk1 contains the timescale for the Harlow model
+    ! now wrk5 contains the timescale for the Harlow model
 
     ! Calculating the SGS fluxes for scalars.
     ! The active scalars (BT) and (eps T) do not need SGS transport, because the SGS transport
@@ -2312,33 +2297,16 @@ contains
     n_et = 3 + n_scalars + 2
 
 
-    ! Currently T_B = 1/|S|.
-    ! This particular time scale has been calculated in  m_les_rhss_sgs_flux_harlow
-    ! and is contained in wrk5, so we do not need to calculate that again
-    ! first, get the |S| from the turb_visc array and put it in wrk5
-!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG+
-    wrk(1:nx,:,:,n5) = turb_visc(1:nx,:,:) / (c_smag * les_delta)**2 / C_mixed
-    ! inverting it so we have the timescale 1/|S|
-    do k = 1,nz
-       do j = 1,ny
-          do i = 1,nx
-             if (abs(wrk(i,j,k,n5)) .lt. 1e-10) then
-                wrk(i,j,k,n5) = zip
-             else
-                wrk(i,j,k,n5) = 1.d0 / wrk(i,j,k,n5)
-             end if
-          end do
-       end do
-    end do
-!<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG-
-
+    ! Currently T_B = 1/|S|.  We need the inverse, which is |S|.
+    ! compute it from turb_visc = (C_smag * les_delta)**2 * |S|
+    wrk(1:nx,:,:,n5) = turb_visc(1:nx,:,:) / (C_smag * les_delta)**2
 
     ! Getting B from (B T_B).
     ! - getting (B T_B) to real space
     wrk(:,:,:,n1) = fields(:,:,:,n_bt)
     call xFFT3d(-1,n1)
     ! - Dividing by T_B (multiplying by |S|)
-    wrk(:,:,:,n1) = wrk(:,:,:,n1) / wrk(:,:,:,n5)
+    wrk(:,:,:,n1) = wrk(:,:,:,n1) * wrk(:,:,:,n5)
     ! - converting back to Fourier space
     call xFFT3d(1,n1)
 
@@ -2351,32 +2319,18 @@ contains
     wrk(:,:,:,n2) = wrk(:,:,:,n2)**1.5D0 / (les_delta * C_T**1.5d0)
     call xFFT3d(1,n2)
 
-    ! saving B and dissipation for output later
-    if (iammaster) B = B + wrk(1,1,1,n1) / real(nxyz_all)
-    if (iammaster) dissipation = dissipation + wrk(1,1,1,n2) / real(nxyz_all)
-
-
     ! Now we have B and epsilon, so we can update the RHS for (BT) and (eps * T)
     ! with the sources.  
-    ! The part of the energy transfer term (Pi) that came from the DSTM part of tauij
-    ! has been added to RHS for (BT) in m_les_get_tauij_dstm_source_BT.  
-    ! Now adding the sources and sinks that come purely from the lag-model.
 
     ! updating the RHS for B (subtracting B)
-    ! note that DSTM part of Pi is already added in subroutine  m_les_get_tauij_dstm_source_BT
-    ! After this we only need to add the part of Pi that comes from the viscous part of tau_ij
-    ! that is calculated separately.
     wrk(:,:,:,n_bt) = wrk(:,:,:,n_bt) - wrk(:,:,:,n1)
 
     ! updating the RHS for (epsilon T) (adding B and subtracting epsilon)
     wrk(:,:,:,n_et) = wrk(:,:,:,n_et) + wrk(:,:,:,n1) - wrk(:,:,:,n2)
 
-    ! adding the part of Pi that comes from the viscous part of the model for tau_ij
-    wrk(1:nx,:,:,n1) = turb_visc(1:nx,:,:)**3 / C_mixed**2 / (c_smag*les_delta)**4
-    call xFFT3d(1,n1)
-    wrk(:,:,:,n_bt) = wrk(:,:,:,n_bt) + wrk(:,:,:,n1)
-    ! saving the energy transfer to be output later
-    if (iammaster) production = production + wrk(1,1,1,n1) / real(nxyz_all)
+    ! saving B and dissipation for output later
+    if (iammaster) B = wrk(1,1,1,n1) / real(nxyz_all)
+    if (iammaster) dissipation = wrk(1,1,1,n2) / real(nxyz_all)
 
     return
   end subroutine m_les_lag_model_sources_no_k
