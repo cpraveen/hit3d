@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-08-24 11:47:58 (chumakov)>
+!  Time-stamp: <2009-08-24 13:47:36 (chumakov)>
 !================================================================================
 module m_les
 
@@ -2164,7 +2164,7 @@ contains
     wrk(:,:,:,n5) = wrk(:,:,:,n5) * wrk(:,:,:,n4)
 
     ! adding the part of Pi that comes from the viscous part of the model for tau_ij
-    wrk(1:nx,:,:,n5) = wrk(1:nx,:,:,n5) + turb_visc(1:nx,:,:)**3 / C_mixed**2 / (c_smag*les_delta)**4
+    wrk(1:nx,:,:,n5) = wrk(1:nx,:,:,n5) + turb_visc(1:nx,:,:)**3 / (c_smag*les_delta)**4
 
     ! converting the energy transfer to F-space and adding to the RHS for (BT)
     call xFFT3d(1,n5)
