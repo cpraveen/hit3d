@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-08-24 13:47:36 (chumakov)>
+!  Time-stamp: <2009-08-26 09:56:46 (chumakov)>
 !================================================================================
 module m_les
 
@@ -2182,7 +2182,7 @@ contains
 !  Calculate the SGS fluxes for all scalars using Harlow model.
 !  The timescale is 1/|S|.  |S| is taken from the turbulent viscosity that was
 !  calculated earlier and is in the array turb_visc.  The formula for turb_visc:
-!  turb_visc = C_mixed * (c_smag * Delta)^2 |S| 
+!  turb_visc = (c_smag * Delta)^2 |S| 
 !  The formula for the SGS flux of a scalar using Harlow model is
 !  flux = d/dx ( 1/|S| tau_ij d(phi)/dx_i ) 
 !================================================================================
@@ -2201,7 +2201,7 @@ contains
     n5 = 3 + n_scalars + n_les + 4
 
     ! first, get the |S| from the turb_visc array and put it in wrk5
-    wrk(1:nx,:,:,n5) = turb_visc(1:nx,:,:) / (c_smag * les_delta)**2 / C_mixed
+    wrk(1:nx,:,:,n5) = turb_visc(1:nx,:,:) / (c_smag * les_delta)**2 
     ! inverting it so we have the timescale 1/|S|
     do k = 1,nz
        do j = 1,ny
