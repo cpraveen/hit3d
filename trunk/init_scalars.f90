@@ -300,8 +300,10 @@ subroutine init_scalar_space(n_scalar)
 
   implicit none
 
-  integer :: i, k, n_scalar, sc_type, ic_type
+  integer :: i, k, n_scalar, sc_type, ic_type, nfi
   real*8  :: zloc, sctmp, h, xx
+
+  nfi = 3 + n_scalar
 
   write(out,*) " Generating scalar # ", n_scalar
   call flush(out)
@@ -363,6 +365,25 @@ subroutine init_scalar_space(n_scalar)
 
      ! making sure that the mean is ero
      if (iammaster) fields(1,1,1,3+n_scalar) = zip
+
+!---------------------------------------------------
+!  N slabs of the scalar
+!  actually more like N sinusoidal waves
+!---------------------------------------------------
+  case(13)
+     write(out,*) "-- Multi-slab scalar in real space"
+     call flush(out)
+
+     ! making sure that we can support the desired numberof waves with our FFT
+     peak_wavenum_sc(n_scalar) = min(peak_wavenum_sc(n_scalar),real(nx/8)) 
+
+     ! definition of initial scalar
+     fields(:,:,:,nfi) = zip
+     do i = 1, nx
+        fields(i,:,:,nfi) = sin(peak_wavenum_sc(n_scalar) * dx * real(i-1))
+     end do
+     call xFFT3d_fields(1,nfi)
+
 
   case default
      write(out,*) "INIT_SCALARS: UNEXPECTED SCALAR TYPE: ", scalar_type(n_scalar)
