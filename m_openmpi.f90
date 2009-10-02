@@ -13,8 +13,8 @@ module m_openmpi
   ! Uncomment this for the systems that do not have OpenMPI
   ! In OpenMPI, the parameter MPI_INTEGER_KIND is defined in 'mpif.h'
   ! With other MPI implementations, this parameter has to be defined manually.
-!  integer MPI_INTEGER_KIND
-!  parameter (MPI_INTEGER_KIND = 4)
+  integer MPI_INTEGER_KIND
+  parameter (MPI_INTEGER_KIND = 4)
 
   ! --- MPI variables
   logical :: iammaster

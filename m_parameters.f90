@@ -96,6 +96,10 @@ module m_parameters
   ! --- number of LES variables in the arrays (initialized to zero)
   integer :: n_les = 0
 
+  ! benchmarking tools
+  logical :: benchmarking=.false.
+  integer (kind=8) :: i81, i82, bm(12)
+
 !================================================================================
 contains
 !================================================================================
