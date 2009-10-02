@@ -56,12 +56,12 @@ MODULES = m_openmpi.o\
 	m_parameters.o\
 	m_work.o\
 	m_fields.o\
+	m_timing.o\
 	x_fftw.o\
 	m_filter_xfftw.o\
 	m_particles.o\
 	m_stats.o\
 	m_force.o\
-	m_timing.o\
 	m_rand_knuth.o\
 	m_les.o\
 	RANDu.o

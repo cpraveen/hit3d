@@ -76,6 +76,10 @@ program x_code
   if (task.eq.'hydro') call dealias_all
 
 
+!********************************************************************************
+  call benchmark
+!********************************************************************************
+
 !================================================================================
 !  MAIN CYCLE
 !================================================================================
@@ -297,3 +301,56 @@ program x_code
 9000 format('ITIME=',i6,3x,'TIME=',f8.4,4x,'DT=',f8.5,3x,'Courn= ',f6.4, &
           2x,'CPU:(',i4.4,':',i2.2,':',i2.2,')',x,a1,x,a3)
    end program x_code
+
+
+!=============================================================================
+   subroutine benchmark
+
+     use m_openmpi
+     use m_io
+     use m_parameters
+     use m_fields
+     use m_work
+     use x_fftw
+     use m_stats
+     use m_timing
+     use m_force
+     use m_rand_knuth
+     use m_particles
+     use m_filter_xfftw
+     use m_les
+
+     implicit none
+
+     integer :: n, nmax
+
+     call m_timing_init
+     benchmarking = .true.
+     bm = 0
+
+     wrk(:,:,:,1) = fields(:,:,:,1)
+
+     do n = 1, nmax
+        call xfft3d(1,1)
+        call xfft3d(-1,1)
+     end do
+
+  if (myid.eq.0) then
+     write(out,*) "BENF: statistics on forward transform"
+     write(out,*) "BENF: R2C: ", bm(1)/nmax
+     write(out,*) "BENF: T13: ", bm(2)/nmax
+     write(out,*) "BENF: C2C: ", bm(3)/nmax
+     write(out,*) "BENF: ====="
+     write(out,*) "BENF: TOT: ", bm(11)/nmax
+     write(out,*) "BENB: statistics on backward transform"
+     write(out,*) "BENB: C2C: ", bm(4)/nmax
+     write(out,*) "BENB: T13: ", bm(5)/nmax
+     write(out,*) "BENB: C2R: ", bm(6)/nmax
+     write(out,*) "BENB: ====="
+     write(out,*) "BENB: TOT: ", bm(12)/nmax
+  end if
+
+  close(out)
+
+  stop 
+end subroutine benchmark

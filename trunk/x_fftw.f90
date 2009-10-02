@@ -31,6 +31,7 @@ MODULE x_fftw
   use m_io
   use m_fields
   use m_work
+  use m_timing
   implicit none
 
   ! FFTW parameters that do not change
@@ -866,6 +867,12 @@ CONTAINS
 !------------------------------------------------------------------------------!
 !  Direct FFT, step 1: 2-D real-to-complex transform
 !------------------------------------------------------------------------------!
+
+       if(benchmarking) then
+          call system_clock(i81,dcpu)
+          bm(11) = bm(11) - i81
+       end if
+
        do iz = 1, nz
           do iy = 1, ny
              do ix = 1, nx
@@ -874,6 +881,12 @@ CONTAINS
           end do
           call DFFTW_EXECUTE(plan_r2c(iz, n))
        end do
+
+       if (benchmarking) then
+          call system_clock(i82,dcpu)
+          bm(1) = bm(1) + i82 - i81
+          i81 = i82
+       end if
 
 !------------------------------------------------------------------------------!
 !  Direct FFT, step 2:  transposing the variable via MPI messaging
@@ -927,6 +940,12 @@ CONTAINS
 
        end do
 
+       if (benchmarking) then
+          call system_clock(i82,dcpu)
+          bm(2) = bm(2) + i82 - i81
+          i81 = i82
+       end if
+
 !------------------------------------------------------------------------------!
 !  Direct FFT, step 3: one-dimensional complex-to-complex FFT
 !------------------------------------------------------------------------------!
@@ -945,6 +964,13 @@ CONTAINS
              end do
           end do
        end do
+
+       if (benchmarking) then
+          call system_clock(i82,dcpu)
+          bm(3) = bm(3) + i82 - i81
+          bm(11) = bm(11) + i82
+       end if
+
 !------------------------------------------------------------------------------!
 
     elseif (flag == -1) then
@@ -952,6 +978,12 @@ CONTAINS
 !------------------------------------------------------------------------------!
 !  Inverse FFT, step 1: one-dimensionsal complex-to-complex transform
 !------------------------------------------------------------------------------!
+       if(benchmarking) then
+          call system_clock(i81,dcpu)
+          bm(12) = bm(12) - i81
+       end if
+
+
        do iy = 1, nz
           do ix = 1, nx21
              do iz = 1, nz_all
@@ -965,6 +997,12 @@ CONTAINS
              end do
           end do
        end do
+
+       if (benchmarking) then
+          call system_clock(i82,dcpu)
+          bm(4) = bm(4) + i82 - i81
+          i81 = i82
+       end if
 !------------------------------------------------------------------------------!
 !  Inverse FFT, step 2: transposing the variable via MPI messaging
 !------------------------------------------------------------------------------!
@@ -1015,6 +1053,13 @@ CONTAINS
              end do
           end do
        end do
+
+       if (benchmarking) then
+          call system_clock(i82,dcpu)
+          bm(5) = bm(5) + i82 - i81
+          i81 = i82
+       end if
+
 !------------------------------------------------------------------------------!
 !  Inverse FFT, step 3: 2-D complex-to-real transform
 !------------------------------------------------------------------------------!
@@ -1026,6 +1071,12 @@ CONTAINS
              end do
           end do
        end do
+
+       if (benchmarking) then
+          call system_clock(i82,dcpu)
+          bm(6) = bm(6) + i82 - i81
+          bm(12) = bm(12) + i82
+       end if
 !------------------------------------------------------------------------------!
 
     end if
