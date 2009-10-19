@@ -379,6 +379,7 @@ subroutine rhs_scalars
         end if
      end do reaction_rates
 
+  end if phase_shifting_dealiasing
 
      ! special case - passive scalar with the uniform gradient as a source
      ! adding the source term - the first component of velocity, because we assume
@@ -387,7 +388,6 @@ subroutine rhs_scalars
         if (scalar_type(n) .eq. 0) wrk(:,:,:,n+3) = wrk(:,:,:,n+3) - fields(:,:,:,1)
      end do gradient_source
 
-  end if phase_shifting_dealiasing
 
 
 !--------------------------------------------------------------------------------
