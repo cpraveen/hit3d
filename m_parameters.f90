@@ -75,7 +75,7 @@ module m_parameters
 
   integer, allocatable :: scalar_type(:)
   real*8, allocatable  :: pe(:), sc(:), ir_exp_sc(:), peak_wavenum_sc(:), reac_sc(:)
-
+  real*8, allocatable  :: reac_swing_time_sc(:), reac_swing_amp_sc(:)
 
   ! constants
   real*8  :: zip=0.0d0, half=0.5d0
@@ -427,14 +427,15 @@ contains
        ! reading parameters of each scalar
        allocate(scalar_type(n_scalars), pe(n_scalars), sc(n_scalars), &
             ir_exp_sc(n_scalars), peak_wavenum_sc(n_scalars), &
-            reac_sc(n_scalars), stat=ierr)
+            reac_sc(n_scalars), reac_swing_time_sc(n_scalars), &
+            reac_swing_amp_sc(n_scalars), stat=ierr)
        if (ierr.ne.0) passed = 0
 
        do n = 1,n_scalars
           read(in,*,ERR=9000,END=9000) scalar_type(n), sc(n), ir_exp_sc(n), &
-               peak_wavenum_sc(n), reac_sc(n)
+               peak_wavenum_sc(n), reac_sc(n), reac_swing_time_sc(n), reac_swing_amp_sc(n)
           write(out,'(9x,i4,1x,4(f8.3,1x))') scalar_type(n), sc(n), ir_exp_sc(n), &
-               peak_wavenum_sc(n), reac_sc(n)
+               peak_wavenum_sc(n), reac_sc(n), reac_swing_time_sc(n), reac_swing_amp_sc(n)
                call flush(out)
 
           PE(n) = nu/SC(n)       ! INVERSE Peclet number
