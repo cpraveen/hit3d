@@ -27,6 +27,15 @@ subroutine init_velocity
   real*8 :: wmag, wmag2, ratio, fac
 
 
+!--------------------------------------------------------------------------------
+!  First, if it's a Taylor-Green vortex, then initialize and quit
+!--------------------------------------------------------------------------------
+  if (isp_type .eq. -1) then
+     call init_velocity_taylor_green
+     return
+  end if
+
+
 !================================================================================
   allocate( e_spec(kmax), e_spec1(kmax), rr(nx+2), hits(kmax), hits1(kmax), stat=ierr)
   if (ierr.ne.0) stop "cannot allocate the init_velocity arrays"
@@ -274,3 +283,52 @@ subroutine init_velocity
   deallocate(e_spec, e_spec1, rr, hits, hits1, stat=ierr)
   return
 end subroutine init_velocity
+
+
+!================================================================================
+!  Initialize the velocities with Taylor-Green vortex
+!================================================================================
+subroutine init_velocity_taylor_green
+
+  use m_openmpi
+  use m_parameters
+  use m_io
+  use m_fields
+  use m_work
+  use x_fftw
+
+  implicit none
+
+  logical :: verbose = .true.
+
+  integer :: i, j, k, n
+  real*8 :: xx, yy, zz
+
+  if (verbose) write(out,*) " --- Initial velocity field is Taylor-Green vortex"
+  if (verbose) call flush(out)
+
+  do k = 1, nz
+     zz = real(nz*myid + k - 1, 8) * dz
+     do j = 1, ny
+        yy = real(j-1, 8) * dy
+        do i = 1, nx
+           xx = real(i-1,8) *dx
+           wrk(i,j,k,1) =   sin(xx) * cos(yy) * cos(zz)
+           wrk(i,j,k,2) = - cos(xx) * sin(yy) * cos(zz)
+           wrk(i,j,k,3) = zip
+        end do
+     end do
+  end do
+
+  call xFFT3D(1, 1)
+  call xFFT3D(1, 2)
+  call xFFT3D(1, 3)
+  fields(:,:,:,1:3) = wrk(:,:,:,1:3)
+
+  if (verbose) write(out,*) " --- initialized."
+  if (verbose) call flush(out)
+
+  return
+end subroutine init_velocity_taylor_green
+
+

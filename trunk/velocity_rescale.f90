@@ -6,7 +6,7 @@
 !  The program is copies from a part of init_velocity.f90.  Some time in the
 !  future we should make it one routine that is called in init_velocity.
 !   
-!  Time-stamp: <2009-04-29 15:31:43 (chumakov)>
+!  Time-stamp: <2010-01-25 17:01:55 (chumakov)>
 !================================================================================
 
 subroutine velocity_rescale
@@ -29,6 +29,10 @@ subroutine velocity_rescale
   real*8    :: sc_rad1, sc_rad2
 
   real*8 :: wmag, wmag2, ratio, fac
+
+
+  ! if Taylor-Green, return
+  if (isp_type.eq.-1) return
 
 
 !================================================================================
