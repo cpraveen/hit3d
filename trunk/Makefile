@@ -5,7 +5,16 @@
 MPIF90 = blah
 
 # Franklin cluster, NERSC
-ifeq ($(HIT3D_MACHINE), franklin)
+ifeq ($(NERSC_HOST), franklin)
+        MPIF90 = ftn
+
+        FCFLAGS = -target=linux -i8 -r8 -O4 -c
+        LDFLAGS = -target=linux -i8 -r8 -O4 -lfftw3
+        FCFLAGS_F77 = -Mextend
+endif
+
+# Hopper cluster, NERSC
+ifeq ($(NERSC_HOST), hopper)
         MPIF90 = ftn
 
         FCFLAGS = -target=linux -i8 -r8 -O4 -c
