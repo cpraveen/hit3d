@@ -115,7 +115,7 @@ contains
 
     integer :: i, j, k, n_shell, n
 
-    real*8 :: fac, sc_rad1, sc_rad2
+    real*8 :: fac, fac2
 
     select case (force_type)
 
@@ -132,57 +132,33 @@ contains
        ! need this normalization factor because the FFT is unnormalized
        fac = one / real(nx*ny*nz_all)**2
 
-       ! assembling the total energy in each shell and number of hits in each shell
+       ! assembling the total energy in each shell
        do k = 1,nz
           do j = 1,ny
              do i = 1,nx
                 n_shell = nint(sqrt(real(akx(i)**2 + aky(k)**2 + akz(j)**2, 4)))
                 if (n_shell .gt. 0 .and. n_shell .le. kfmax) then
-                   hits1(n_shell) = hits1(n_shell) + 1
-                   e_spec1(n_shell) = e_spec1(n_shell) + &
-                        fac * (fields(i,j,k,1)**2 + fields(i,j,k,2)**2 + fields(i,j,k,3)**2)
+                   fac2 = fac * (fields(i,j,k,1)**2 + fields(i,j,k,2)**2 + fields(i,j,k,3)**2)
+                   if (akx(i).eq.0.d0) fac2 = fac2 * 0.5d0
+                   e_spec1(n_shell) = e_spec1(n_shell) + fac2
                 end if
              end do
           end do
        end do
        ! reducing the number of hits and energy to two arrays on master node
        count = kfmax
-       call MPI_REDUCE(hits1,hits,count,MPI_INTEGER8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
        call MPI_REDUCE(e_spec1,e_spec,count,MPI_REAL8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
 
-       ! now the master node counts the energy density in each shell 
-       ! (see m_stat.f90 for version with comments)
-       if (myid.eq.0) then
-          fac = four/three * PI / two
-          do k = 1,kfmax
-             sc_rad1 = real(k,8) + half
-             sc_rad2 = real(k,8) - half
-             if (k.eq.1) sc_rad2 = 0.d0
-             if (hits(k).gt.0) then
-                e_spec(k) = e_spec(k) / hits(k) * fac * (sc_rad1**3 - sc_rad2**3)
-             else
-                e_spec(k) = zip
-             end if
-          end do
-
-          ! getting the total energy in the region [0:kfmax] by integrating 
-          ! the spectrum
-          energy = sum(e_spec(1:kfmax))
-
-       end if
-
-!!$       ! broadcasting the current energy spectrum in the shells [0:kfmax]
-!!$       count = kfmax
-!!$       call MPI_BCAST(e_spec,count,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
+       ! getting the total energy in the region [0:kfmax] by integrating the spectrum
+       if (myid.eq.0) energy = sum(e_spec(1:kfmax))
 
        ! broadcasting the current energy in the forcing range of wavenumbers
        count = 1
-
        call MPI_BCAST(energy,count,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
 
        ! now applying the forcing to the RHS for velocities (wrk(:,:,:,1:3))
 
-       fac = FAMP / two / energy
+       fac = FAMP / energy
 
        do n = 1,n_forced_nodes
           n_shell = k_shell(n)
