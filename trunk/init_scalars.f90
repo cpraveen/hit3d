@@ -104,7 +104,7 @@ subroutine init_scalar_spectrum(n_scalar)
   integer   :: n_shell
   real*8    :: sc_rad1, sc_rad2
 
-  real*8 :: wmag, wmag2, ratio, fac
+  real*8 :: wmag, wmag2, ratio, fac, fac2
 
 !--------------------------------------------------------------------------------
   write(out,*) " Generating scalar # ",n_scalar
@@ -168,8 +168,9 @@ subroutine init_scalar_spectrum(n_scalar)
 
            n_shell = nint(sqrt(real(akx(i)**2 + aky(k)**2 + akz(j)**2, 4)))
            if (n_shell .gt. 0 .and. n_shell .le. kmax) then
-              hits1(n_shell) = hits1(n_shell) + 1
-              e_spec1(n_shell) = e_spec1(n_shell) + fac * wrk(i,j,k,3)**2
+              fac2 = fac * wrk(i,j,k,3)**2
+              if (akx(i).eq.0.d0) fac2 = fac2 * 0.5d0
+              e_spec1(n_shell) = e_spec1(n_shell) + fac2
            end if
         end do
      end do
@@ -177,24 +178,7 @@ subroutine init_scalar_spectrum(n_scalar)
 
   ! reducing the number of hits and energy to two arrays on master node
   count = kmax
-  call MPI_REDUCE(hits1,hits,count,MPI_INTEGER8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
   call MPI_REDUCE(e_spec1,e_spec,count,MPI_REAL8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
-
-  ! now the master node counts the energy density in each shell
-  if (myid.eq.0) then
-     fac = four/three * PI / two
-     do k = 1,kmax
-        sc_rad1 = real(k,8) + half
-        sc_rad2 = real(k,8) - half
-        if (k.eq.1) sc_rad2 = 0.d0
-        if (hits(k).gt.0) then
-           e_spec(k) = e_spec(k) / hits(k) * fac * (sc_rad1**3 - sc_rad2**3)
-        else
-           e_spec(k) = zip
-        end if
-     end do
-  end if
-
   ! broadcasting the spectrum
   count = kmax
   call MPI_BCAST(e_spec,count,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)

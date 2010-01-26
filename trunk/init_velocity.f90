@@ -24,7 +24,7 @@ subroutine init_velocity
   integer   :: n_shell
   real*8    :: sc_rad1, sc_rad2
 
-  real*8 :: wmag, wmag2, ratio, fac
+  real*8 :: wmag, wmag2, ratio, fac, fac2
 
 
 !--------------------------------------------------------------------------------
@@ -170,50 +170,18 @@ subroutine init_velocity
 
            n_shell = nint(sqrt(real(akx(i)**2 + aky(k)**2 + akz(j)**2, 4)))
            if (n_shell .gt. 0 .and. n_shell .le. kmax) then
-              hits1(n_shell) = hits1(n_shell) + 1
-              e_spec1(n_shell) = e_spec1(n_shell) + &
-                   fac * (fields(i,j,k,1)**2 + fields(i,j,k,2)**2 + fields(i,j,k,3)**2)
+              fac2 = fac * (fields(i,j,k,1)**2 + fields(i,j,k,2)**2 + fields(i,j,k,3)**2)
+              if (akx(i).eq.0.d0) fac2 = fac2 * 0.5d0
+              e_spec1(n_shell) = e_spec1(n_shell) + fac2
            end if
+
         end do
      end do
   end do
 
   ! reducing the number of hits and energy to two arrays on master node
   count = kmax
-  call MPI_REDUCE(hits1,hits,count,MPI_INTEGER8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
-  count = kmax
   call MPI_REDUCE(e_spec1,e_spec,count,MPI_REAL8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
-
-!!$  write(out,*) "SPECTRA"
-!!$  write(out,*) e_spec1
-!!$  write(out,*) e_spec
-!!$  write(out,*) hits
-!!$  call flush(out)
-
-
-  ! now the master node counts the energy density in each shell
-  if (myid.eq.0) then
-     fac = four/three * PI / two
-     do k = 1,kmax
-        sc_rad1 = real(k,8) + half
-        sc_rad2 = real(k,8) - half
-        if (k.eq.1) sc_rad2 = 0.d0
-        if (hits(k).gt.0) then
-           e_spec(k) = e_spec(k) / hits(k) * fac * (sc_rad1**3 - sc_rad2**3)
-           
-!!$           print *, e_spec(k), hits(k), fac, sc_rad1, sc_rad2
-
-        else
-           e_spec(k) = zip
-        end if
-     end do
-
-!!$     print *,'SPECTRUM from the processor 0:',e_spec
-!!$     print *,'HITS:',hits
-
-  end if
-
-  ! broadcasting the spectrum
   count = kmax
   call MPI_BCAST(e_spec,count,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
 
@@ -250,13 +218,6 @@ subroutine init_velocity
 
 !  normalize it so it has the unit total energy
   e_spec1 = e_spec1 / sum(e_spec1(1:kmax))
-
-!!$  write(out,"(i3,e15.6)") ((k,e_spec1(k)),k=1,kmax)
-!!$  call flush(out)
-!!$
-!!$  write(out,"(i3,e15.6)") ((k,e_spec(k)),k=1,kmax)
-!!$  call flush(out)
-
 
   ! now go over all Fourier shells and multiply the velocities in a shell by
   ! the sqrt of ratio of the resired to the current spectrum
