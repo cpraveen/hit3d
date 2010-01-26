@@ -45,6 +45,8 @@ contains
 
     use m_parameters
     use m_fields
+    use m_work
+    use x_fftw
 
     implicit none
 
@@ -53,28 +55,32 @@ contains
     logical :: there2
 
 
+    real*8 :: fac, fac2
+
+
     call stat_velocity
 
-    if (int_scalars) call stat_scalars
+    if (int_scalars) then
+       call stat_scalars
 
-    if (int_scalars .and. myid.eq.0) then
        ! now outputting the scalar statistics
-
        do n = 1, n_scalars
-          write(fname,"('sc',i2.2,'.gp')") n
+          if (myid.eq.0) then
 
-          inquire(file=fname, exist=there, opened=there2)
-
-          if (.not.there) then
-             open(100+n,file=fname,form='formatted')
-             write(100+n,'(A)') '# 1.itime 2.time          3.sc.diss       4. mean      5.variance    6.min     7.max'
+             write(fname,"('sc',i2.2,'.gp')") n
+             inquire(file=fname, exist=there, opened=there2)
+             if (.not.there) then
+                open(100+n,file=fname,form='formatted')
+                write(100+n,'(A)') '# 1.itime 2.time          3.sc.diss       4. mean      5.variance    6.min     7.max'
+             end if
+             if(there.and..not.there2) then
+                open(100+n,file=fname,position='append')
+             end if
+             write(100+n,"(i7,10e15.6)") itime, time, sc_diss(n), moments(3+n,1:2), sc_min(n), sc_max(n)
+             call flush(100+n)
           end if
-          if(there.and..not.there2) then
-             open(100+n,file=fname,position='append')
-          end if
-          write(100+n,"(i7,10e15.6)") itime, time, sc_diss(n), moments(3+n,1:2), sc_min(n), sc_max(n)
-          call flush(100+n)
        end do
+
     end if
 
     if (task_split) then
@@ -109,14 +115,14 @@ contains
     if (myid.eq.0) then
 
        ! getting the total energy
-       energy = sum(e_spec(1:kmax)) + half * e_spec(1)
+       energy = sum(e_spec(1:kmax))
 
 
        ! finding dissipation spectrum and total dissipation
        do k = 1,kmax
           e_spec1(k) = e_spec(k) * real(k**2,8) * two * nu
        end do
-       eps_v = sum(e_spec1(1:kmax)) + half*e_spec1(1)
+       eps_v = sum(e_spec1(1:kmax))
 
        ! finding Kolmogorov scale
        eta = (nu**3/eps_v)**0.25
@@ -129,7 +135,6 @@ contains
        do k = 1, kmax
           sctmp = sctmp + e_spec(k) / real(k,8)
        end do
-       sctmp = sctmp + half*e_spec(1)
        x_length = PI / two * sctmp / uvar
 
        ! Taylor microscale
@@ -175,16 +180,11 @@ contains
        write(900,"()")
        write(900,"('# ITIME=',i7,' TIME=',e17.8)") ITIME, TIME
        do k = 1,kmax !min(kmax,nx/3)
-          write(900,"(i4,2e15.6)") k,e_spec(k), e_spec1(k)!, hits(k)
+          write(900,"(i4,2e15.6)") k,e_spec(k), e_spec1(k)
        end do
        close(900)
 
-
-
     end if
-
-
-
     return
   end subroutine stat_velocity
 
@@ -199,16 +199,16 @@ contains
     use x_fftw
     implicit none
 
-    real*8    :: sc_rad1, sc_rad2, fac
+    real*8    :: sc_rad1, sc_rad2, fac, fac2
     integer :: i, j, k, n_shell
+
+    real*8 :: energy2
 
     ! need this normalization factor because the FFT is unnormalized
     fac = one / real(nx*ny*nz_all)**2
 
     e_spec1 = zip
     e_spec = zip
-    hits = 0
-    hits1 = 0
 
     ! assembling the total energy in each shell and number of hits in each shell
     do k = 1,nz
@@ -216,15 +216,11 @@ contains
           do i = 1,nx
 
              n_shell = nint(sqrt(real(akx(i)**2 + aky(k)**2 + akz(j)**2, 4)))
+
              if (n_shell .gt. 0 .and. n_shell .le. kmax) then
-
-                if (akx(i).le.nx/3 .and. aky(k).le.nx/3 .and. akz(j).le.nx/3) then
-
-                   hits1(n_shell) = hits1(n_shell) + 1
-                   e_spec1(n_shell) = e_spec1(n_shell) + &
-                        fac * (fields(i,j,k,1)**2 + fields(i,j,k,2)**2 + fields(i,j,k,3)**2)
-
-                end if
+                fac2 =  fac * (fields(i,j,k,1)**2 + fields(i,j,k,2)**2 + fields(i,j,k,3)**2)
+                if (akx(i).eq.0.d0) fac2 = 0.5d0 * fac2
+                e_spec1(n_shell) = e_spec1(n_shell) + fac2
              end if
 
           end do
@@ -233,33 +229,7 @@ contains
 
     ! reducing the number of hits and energy to two arrays on master node
     count = kmax
-    call MPI_REDUCE(hits1,hits,count,MPI_INTEGER8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
     call MPI_REDUCE(e_spec1,e_spec,count,MPI_REAL8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
-
-
-    ! now the master node counts the energy density in each shell
-    if (myid.eq.0) then
-
-       ! 4/3 PI is prefactor for the shell volume, and 1/2 is the 
-       ! factor from the energy (u^2+v^2+w^2)/2, omitted in the above cycle
-       fac = four/three * PI / two
-
-       do k = 1,kmax
-
-          sc_rad1 = real(k,8) + half
-          sc_rad2 = real(k,8) - half
-          if (k.eq.1) sc_rad2 = 0.d0
-
-          if (hits(k).gt.0) then
-             e_spec(k) = e_spec(k) / hits(k) * fac * (sc_rad1**3 - sc_rad2**3)
-          else
-             e_spec(k) = zip
-          end if
-
-       end do
-    end if
-
-
 
     return
   end subroutine get_e_spec
@@ -389,7 +359,6 @@ contains
        call MPI_REDUCE(q1,sc_min(n),count,MPI_REAL8,MPI_MIN,0,MPI_COMM_TASK,mpi_err)
        call MPI_REDUCE(q2,sc_max(n),count,MPI_REAL8,MPI_MAX,0,MPI_COMM_TASK,mpi_err)
 
-
     end do
 
 
@@ -406,8 +375,10 @@ contains
     use x_fftw
     implicit none
 
-    real*8    :: sc_rad1, sc_rad2, fac
+    real*8    :: sc_rad1, sc_rad2, fac, fac2
     integer :: i, j, k, n, n_shell
+
+    real*8 :: energy2
 
     ! cycle over the scalars
     do n = 1,n_scalars
@@ -427,46 +398,29 @@ contains
              do i = 1,nx
 
                 n_shell = nint(sqrt(real(akx(i)**2 + aky(k)**2 + akz(j)**2, 4)))
+
                 if (n_shell .gt. 0 .and. n_shell .le. kmax) then
-
-                   hits1(n_shell) = hits1(n_shell) + 1
-                   e_spec1(n_shell) = e_spec1(n_shell) + fac * fields(i,j,k,3+n)**2
-
+                   fac2 = fac * fields(i,j,k,3+n)**2
+                   if (akx(i).eq.0.d0) fac2 = 0.5d0 * fac2
+                   e_spec1(n_shell) = e_spec1(n_shell) + fac2
                 end if
 
              end do
           end do
        end do
 
-       ! reducing the number of hits and energy to two arrays on master node
+       ! reducing the energy to two arrays on master node
        count = kmax
-       call MPI_REDUCE(hits1,hits,count,MPI_INTEGER8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
        call MPI_REDUCE(e_spec1,e_spec,count,MPI_REAL8,MPI_SUM,0,MPI_COMM_TASK,mpi_err)
-
 
        ! now the master node counts the energy density in each shell
        master_node: if (myid.eq.0) then
 
-          ! 4/3 PI is prefactor for the shell volume, and 1/2 is the 
-          ! factor from the energy (u^2+v^2+w^2)/2, omitted in the above cycle
-          fac = four/three * PI / two
 
-          do k = 1,kmax
-
-             sc_rad1 = real(k,8) + half
-             sc_rad2 = real(k,8) - half
-             if (k.eq.1) sc_rad2 = 0.d0
-
-             if (hits(k).gt.0) then
-                e_spec(k) = e_spec(k) / hits(k) * fac * (sc_rad1**3 - sc_rad2**3)
-             else
-                e_spec(k) = zip
-             end if
-
-          end do
+          ! multiplying by two because we summed only half of the scalar energy
+          e_spec = 2.d0 * e_spec
 
           ! now the master node puts the scalar energy in the file es_sc##.gp
-
           write(fname,"('es_',i2.2,'.gp')") n
           open(900,file=fname,position='append')
           write(900,"()")
@@ -476,9 +430,6 @@ contains
              write(900,"(i4,4e15.6)") k,e_spec(k)
           end do
           close(900)
-
-
-
 
        end if master_node
 
