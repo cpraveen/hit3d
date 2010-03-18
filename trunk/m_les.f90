@@ -5,7 +5,7 @@
 !  The behaviour of the module is governed by the variable "les_mode" from the
 !  module m_parameters.f90
 !
-!  Time-stamp: <2009-08-26 09:56:46 (chumakov)>
+!  Time-stamp: <2010-03-18 13:52:33 (chumakov)>
 !================================================================================
 module m_les
 
@@ -322,16 +322,17 @@ contains
 !<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG+
        inquire(file = 'c_mixed.in', exist = there)
        if (.not.there) then
-          write(out,*) "Cannot find the file 'c_mixed.in', exiting"
-          call my_exit(-1)
+          write(out,*) "Cannot find the file 'c_mixed.in', making default 0.5"
+          c_mixed = 0.5d0
+       else
+          if (iammaster) then
+             open(900,file='c_mixed.in')
+             read(900,*) C_mixed
+             close(900)
+          end if
+          count = 1
+          call MPI_BCAST(C_mixed,count,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
        end if
-       if (iammaster) then
-          open(900,file='c_mixed.in')
-          read(900,*) C_mixed
-          close(900)
-       end if
-       count = 1
-       call MPI_BCAST(C_mixed,count,MPI_REAL8,0,MPI_COMM_TASK,mpi_err)
        write(out,*) "MIXED MODEL WITH C_MIXED = ",C_mixed
        call flush(out)
 !<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><> DEBUG-
@@ -1029,6 +1030,7 @@ contains
     integer :: i
     do i = 4, 3+n_scalars+n_les
        call m_les_rhss_turb_visc1(i)
+
     end do
     return
   end subroutine m_les_rhss_turb_visc
@@ -2164,7 +2166,7 @@ contains
     wrk(:,:,:,n5) = wrk(:,:,:,n5) * wrk(:,:,:,n4)
 
     ! adding the part of Pi that comes from the viscous part of the model for tau_ij
-    wrk(1:nx,:,:,n5) = wrk(1:nx,:,:,n5) + turb_visc(1:nx,:,:)**3 / (c_smag*les_delta)**4
+    wrk(1:nx,:,:,n5) = wrk(1:nx,:,:,n5) + C_mixed * turb_visc(1:nx,:,:)**3 / (c_smag*les_delta)**4
 
     ! converting the energy transfer to F-space and adding to the RHS for (BT)
     call xFFT3d(1,n5)
