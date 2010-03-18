@@ -400,12 +400,11 @@ subroutine restart_read_parallel
 
   ! checking if the number of LES quantities is the same in .in and restart files
   if (n_les .ne. nles1) then
-     write(out,*) '*** error: Different values of n_les:'
+     write(out,*) '*** WARNING : Different values of n_les:'
      write(out,*) '***     .in file: ',n_les
      write(out,*) '*** restart file: ',nles1
      write(out,*) '*** Make sure you are running the same simulation.'
      call flush(out)
-     call my_exit(-1)
   end if
 
 !-----------------------------------------------------------------------
